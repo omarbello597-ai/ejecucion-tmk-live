@@ -411,6 +411,18 @@ function authErr(code){
   return m[code]||'Ocurrió un error. Intenta de nuevo.';
 }
 function fmtTime(sec){const h=String(Math.floor(sec/3600)).padStart(2,'0');const m=String(Math.floor(sec%3600/60)).padStart(2,'0');const s=String(sec%60).padStart(2,'0');return h+':'+m+':'+s;}
+
+/* Separa "001 - Éxito Country" → {codigo:"001", nombre:"Éxito Country"} */
+function parsePDV(pdv){
+  const m=(pdv||'').match(/^\s*([\w-]+)\s*-\s*(.+)$/);
+  if(m) return {codigo:m[1].trim(), nombre:m[2].trim()};
+  return {codigo:'', nombre:(pdv||'').trim()};
+}
+/* Convierte un texto en slug seguro para rutas de Storage: sin tildes, espacios→guiones */
+function slug(txt){
+  return (txt||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'')   // quita tildes
+    .replace(/[^\w\s-]/g,'').trim().replace(/\s+/g,'-').slice(0,60) || 'tienda';
+}
 function getGPS(){
   return new Promise(res=>{
     if(!navigator.geolocation){res(null);return;}
@@ -507,10 +519,12 @@ $('start-btn').onclick=async()=>{
   // Crear el documento EN CURSO (alimenta el dashboard en vivo)
   if(!DEMO){
     try{
+      const pp=parsePDV(pdv);
       const ref=await addDoc(collection(db,'ejecuciones'),{
         uid:PROFILE.uid, mercaderista:PROFILE.nombre||PROFILE.email,
         rol:PROFILE.rol||'mercaderista',
-        pdv, estado:'en_curso',
+        pdv, codigo_tienda:pp.codigo, nombre_tienda:pp.nombre,
+        estado:'en_curso',
         inicio:exec.inicio, gps_inicio:gps||null,
         total_fotos:0, creado:serverTimestamp()
       });
@@ -622,13 +636,15 @@ $('finish-btn').onclick=async()=>{
 
 async function saveExec(ex,durSec,total){
   if(DEMO){ await new Promise(r=>setTimeout(r,700)); return; }
-  // Subir fotos primero
+  const pp=parsePDV(ex.pdv);
+  // Carpeta legible:  ejecuciones/001-Exito-Country/{idVisita}
+  const carpetaTienda = (pp.codigo?pp.codigo+'-':'') + slug(pp.nombre);
+  const execId = ex.docId || ('v_'+Date.now());
   const urls={ejecucion:[],factura:[],cliente:[],exhibicion:[]};
-  const execId = ex.docId || ('tmp_'+Date.now());
   for(const tipo of Object.keys(ex.fotos)){
     for(let i=0;i<ex.fotos[tipo].length;i++){
       const file=ex.fotos[tipo][i];
-      const path='ejecuciones/'+PROFILE.uid+'/'+execId+'/'+tipo+'_'+i+'_'+Date.now()+'.jpg';
+      const path='ejecuciones/'+carpetaTienda+'/'+execId+'/'+tipo+'_'+i+'_'+Date.now()+'.jpg';
       const snap=await uploadBytes(ref(storage,path),file);
       urls[tipo].push(await getDownloadURL(snap.ref));
     }
@@ -638,13 +654,12 @@ async function saveExec(ex,durSec,total){
     gps_fin:ex.gpsFin||null, notas:ex.notas, total_fotos:total, fotos:urls
   };
   if(ex.docId){
-    // actualizar el documento creado al iniciar
     await updateDoc(doc(db,'ejecuciones',ex.docId), data);
   }else{
-    // respaldo: si no se creó al iniciar, crear completo ahora
     await addDoc(collection(db,'ejecuciones'),{
       uid:PROFILE.uid, mercaderista:PROFILE.nombre||PROFILE.email,
       rol:PROFILE.rol||'mercaderista', pdv:ex.pdv,
+      codigo_tienda:pp.codigo, nombre_tienda:pp.nombre,
       inicio:ex.inicio, gps_inicio:ex.gpsInicio||null,
       creado:serverTimestamp(), ...data
     });
