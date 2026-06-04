@@ -126,6 +126,20 @@
     .wrap{border:5px solid var(--yellow);border-radius:18px;margin-top:10px;margin-bottom:10px;min-height:calc(100vh - 20px)}
     .whitebg{border-top:none}
   }
+
+  /* Dashboard KPIs */
+  .kpis{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:14px}
+  .kpi{background:var(--royal);color:#fff;border-radius:14px;padding:16px 14px;text-align:center}
+  .kpi:nth-child(2){background:var(--royal2)}
+  .kpi-n{font-family:var(--disp);font-size:2rem;font-weight:800;line-height:1;color:var(--yellow)}
+  .kpi-l{font-size:.74rem;margin-top:6px;opacity:.9;font-weight:600}
+  .row-item{display:flex;justify-content:space-between;align-items:center;padding:11px 0;border-bottom:1px solid var(--line);font-size:.9rem}
+  .row-item:last-child{border:none}
+  .row-item .r-main{font-weight:600;color:var(--royal)}
+  .row-item .r-sub{font-size:.78rem;color:var(--muted)}
+  .row-item .r-time{font-family:var(--disp);font-weight:700;color:var(--red);font-variant-numeric:tabular-nums}
+  .row-item .r-badge{font-family:var(--disp);font-weight:800;background:var(--yellow);color:var(--royal);border-radius:8px;padding:3px 9px;font-size:.82rem}
+  .empty{color:var(--muted);font-size:.86rem;text-align:center;padding:10px}
 </style>
 </head>
 <body>
@@ -207,6 +221,37 @@
       <p class="sub" id="resume-info">—</p>
       <button class="btn amber" id="resume-btn">Continuar ejecución</button>
     </div>
+    <div class="card" id="dashboardCard" style="display:none;border-color:var(--royal)">
+      <h2>📊 Tablero en vivo</h2>
+      <p class="sub">Monitoreo nacional en tiempo real.</p>
+      <button class="btn" id="open-dash-btn">Abrir tablero LIVE</button>
+    </div>
+  </section>
+
+  <!-- ===== DASHBOARD EN VIVO ===== -->
+  <section id="scr-dash" class="screen">
+    <div class="top">
+      <div><div class="name">📊 Tablero LIVE</div><div class="role"><span class="pill live" id="dash-livedot">● en vivo</span></div></div>
+      <button class="iconbtn" id="dash-back">‹</button>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="kpi-n" id="k-activas">0</div><div class="kpi-l">Tiendas activas ahora</div></div>
+      <div class="kpi"><div class="kpi-n" id="k-hoy">0</div><div class="kpi-l">Finalizadas hoy</div></div>
+      <div class="kpi"><div class="kpi-n" id="k-prom">—</div><div class="kpi-l">Tiempo promedio</div></div>
+      <div class="kpi"><div class="kpi-n" id="k-fotos">0</div><div class="kpi-l">Fotos hoy</div></div>
+    </div>
+    <div class="card">
+      <h2>🟢 En curso ahora</h2>
+      <div id="dash-activas"><p class="sub">Cargando…</p></div>
+    </div>
+    <div class="card">
+      <h2>🏆 Ranking de hoy</h2>
+      <div id="dash-ranking"><p class="sub">Cargando…</p></div>
+    </div>
+    <div class="card">
+      <h2>🕒 Últimas finalizadas</h2>
+      <div id="dash-ultimas"><p class="sub">Cargando…</p></div>
+    </div>
   </section>
 
   <!-- ===== EJECUCIÓN ACTIVA ===== -->
@@ -262,7 +307,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, setDoc, getDoc, updateDoc, collection, addDoc, serverTimestamp }
+import { getFirestore, doc, setDoc, getDoc, updateDoc, collection, addDoc, serverTimestamp, onSnapshot, query, where, orderBy }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getStorage, ref, uploadBytes, getDownloadURL }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-storage.js";
@@ -381,6 +426,8 @@ if(!DEMO){
 function enterApp(){
   $('hm-name').textContent=PROFILE.nombre||PROFILE.email;
   $('hm-role').textContent=(PROFILE.rol||'mercaderista').replace('_',' ');
+  const esMando = ['key_master','gerente'].includes(PROFILE.rol) || SUPER_ADMINS.includes((PROFILE.email||'').toLowerCase());
+  $('dashboardCard').style.display = esMando ? 'block' : 'none';
   show('scr-home');
 }
 
@@ -388,11 +435,28 @@ function enterApp(){
 $('start-btn').onclick=async()=>{
   const pdv=$('pdv-select').value;
   if(!pdv){toast('Selecciona un punto de venta');return;}
-  $('start-btn').disabled=true; $('start-btn').textContent='Capturando GPS...';
-  const gps=await getGPS();
-  $('start-btn').disabled=false; $('start-btn').textContent='▶ Iniciar ejecución';
-  exec={ pdv, inicio:Date.now(), gpsInicio:gps, gpsFin:null,
+  $('start-btn').disabled=true; $('start-btn').textContent='Capturando ubicación...';
+  let gps=await getGPS();
+  if(!gps){ // reintento único: la 1ª vez el permiso tarda
+    await new Promise(r=>setTimeout(r,1200));
+    gps=await getGPS();
+  }
+  exec={ pdv, inicio:Date.now(), gpsInicio:gps, gpsFin:null, docId:null,
          fotos:{ejecucion:[],factura:[],cliente:[],exhibicion:[]}, notas:'' };
+  // Crear el documento EN CURSO (alimenta el dashboard en vivo)
+  if(!DEMO){
+    try{
+      const ref=await addDoc(collection(db,'ejecuciones'),{
+        uid:PROFILE.uid, mercaderista:PROFILE.nombre||PROFILE.email,
+        rol:PROFILE.rol||'mercaderista',
+        pdv, estado:'en_curso',
+        inicio:exec.inicio, gps_inicio:gps||null,
+        total_fotos:0, creado:serverTimestamp()
+      });
+      exec.docId=ref.id;
+    }catch(err){ console.error('No se pudo crear ejecución en curso',err); }
+  }
+  $('start-btn').disabled=false; $('start-btn').textContent='▶ Iniciar ejecución';
   $('ex-pdv').textContent=pdv;
   $('ex-gps').textContent = gps ? ('📍 GPS '+gps.lat+', '+gps.lng) : '📍 GPS no disponible';
   ['ejecucion','factura','cliente','exhibicion'].forEach(t=>$('cnt-'+t).textContent='0 fotos');
@@ -465,28 +529,98 @@ $('finish-btn').onclick=async()=>{
 
 async function saveExec(ex,durSec,total){
   if(DEMO){ await new Promise(r=>setTimeout(r,700)); return; }
-  const execRef=await addDoc(collection(db,'ejecuciones'),{
-    uid:PROFILE.uid, mercaderista:PROFILE.nombre||PROFILE.email,
-    pdv:ex.pdv, estado:'finalizada',
-    inicio:ex.inicio, fin:ex.fin, duracion_seg:durSec,
-    gps_inicio:ex.gpsInicio, gps_fin:ex.gpsFin,
-    notas:ex.notas, total_fotos:total,
-    creado:serverTimestamp()
-  });
+  // Subir fotos primero
   const urls={ejecucion:[],factura:[],cliente:[],exhibicion:[]};
+  const execId = ex.docId || ('tmp_'+Date.now());
   for(const tipo of Object.keys(ex.fotos)){
     for(let i=0;i<ex.fotos[tipo].length;i++){
       const file=ex.fotos[tipo][i];
-      const path='ejecuciones/'+PROFILE.uid+'/'+execRef.id+'/'+tipo+'_'+i+'_'+Date.now()+'.jpg';
+      const path='ejecuciones/'+PROFILE.uid+'/'+execId+'/'+tipo+'_'+i+'_'+Date.now()+'.jpg';
       const snap=await uploadBytes(ref(storage,path),file);
       urls[tipo].push(await getDownloadURL(snap.ref));
     }
   }
-  await updateDoc(execRef,{fotos:urls});
+  const data={
+    estado:'finalizada', fin:ex.fin, duracion_seg:durSec,
+    gps_fin:ex.gpsFin||null, notas:ex.notas, total_fotos:total, fotos:urls
+  };
+  if(ex.docId){
+    // actualizar el documento creado al iniciar
+    await updateDoc(doc(db,'ejecuciones',ex.docId), data);
+  }else{
+    // respaldo: si no se creó al iniciar, crear completo ahora
+    await addDoc(collection(db,'ejecuciones'),{
+      uid:PROFILE.uid, mercaderista:PROFILE.nombre||PROFILE.email,
+      rol:PROFILE.rol||'mercaderista', pdv:ex.pdv,
+      inicio:ex.inicio, gps_inicio:ex.gpsInicio||null,
+      creado:serverTimestamp(), ...data
+    });
+  }
 }
 
 $('sm-home').onclick=()=>show('scr-home');
 $('sm-new').onclick=()=>{ $('pdv-select').value=''; show('scr-home'); };
+
+/* ============ DASHBOARD EN VIVO ============ */
+let dashUnsub=null, dashTick=null;
+$('open-dash-btn').onclick=()=>{ show('scr-dash'); startDash(); };
+$('dash-back').onclick=()=>{ stopDash(); show('scr-home'); };
+
+function startDash(){
+  if(DEMO){ renderDashDemo(); return; }
+  stopDash();
+  // Escucha en vivo TODA la colección de ejecuciones
+  const q=query(collection(db,'ejecuciones'), orderBy('inicio','desc'));
+  dashUnsub=onSnapshot(q, snap=>{
+    const docs=[]; snap.forEach(d=>docs.push({id:d.id,...d.data()}));
+    renderDash(docs);
+  }, err=>{ console.error('dash snapshot',err); $('dash-activas').innerHTML='<p class="empty">Error al cargar.</p>'; });
+  // refresco del cronómetro de las activas cada segundo
+  dashTick=setInterval(()=>document.querySelectorAll('[data-since]').forEach(el=>{
+    const s=Math.floor((Date.now()-(+el.dataset.since))/1000); el.textContent=fmtTime(s);
+  }),1000);
+}
+function stopDash(){ if(dashUnsub){dashUnsub();dashUnsub=null;} if(dashTick){clearInterval(dashTick);dashTick=null;} }
+
+function esHoy(ms){ const d=new Date(ms),n=new Date(); return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate(); }
+
+function renderDash(docs){
+  const activas=docs.filter(d=>d.estado==='en_curso');
+  const finHoy=docs.filter(d=>d.estado==='finalizada' && esHoy(d.fin||d.inicio));
+  // KPIs
+  $('k-activas').textContent=activas.length;
+  $('k-hoy').textContent=finHoy.length;
+  const proms=finHoy.filter(d=>d.duracion_seg).map(d=>d.duracion_seg);
+  $('k-prom').textContent = proms.length ? fmtTime(Math.round(proms.reduce((a,b)=>a+b,0)/proms.length)) : '—';
+  $('k-fotos').textContent = finHoy.reduce((a,d)=>a+(d.total_fotos||0),0);
+  // En curso
+  if(activas.length){
+    $('dash-activas').innerHTML=activas.map(d=>(
+      '<div class="row-item"><div><div class="r-main">'+d.pdv+'</div><div class="r-sub">'+(d.mercaderista||'—')+'</div></div>'+
+      '<div class="r-time" data-since="'+d.inicio+'">'+fmtTime(Math.floor((Date.now()-d.inicio)/1000))+'</div></div>'
+    )).join('');
+  } else $('dash-activas').innerHTML='<p class="empty">Ninguna tienda activa en este momento.</p>';
+  // Ranking de hoy (por # de finalizadas)
+  const conteo={};
+  finHoy.forEach(d=>{const k=d.mercaderista||'—';conteo[k]=(conteo[k]||0)+1;});
+  const rank=Object.entries(conteo).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  $('dash-ranking').innerHTML = rank.length ? rank.map(([n,c],i)=>(
+    '<div class="row-item"><div class="r-main">'+(i+1)+'. '+n+'</div><div class="r-badge">'+c+'</div></div>'
+  )).join('') : '<p class="empty">Aún no hay ejecuciones hoy.</p>';
+  // Últimas finalizadas
+  const ult=docs.filter(d=>d.estado==='finalizada').slice(0,8);
+  $('dash-ultimas').innerHTML = ult.length ? ult.map(d=>(
+    '<div class="row-item"><div><div class="r-main">'+d.pdv+'</div><div class="r-sub">'+(d.mercaderista||'—')+' · '+new Date(d.fin||d.inicio).toLocaleTimeString()+'</div></div>'+
+    '<div class="r-sub">'+(d.total_fotos||0)+' fotos · '+(d.duracion_seg?fmtTime(d.duracion_seg):'—')+'</div></div>'
+  )).join('') : '<p class="empty">Sin ejecuciones finalizadas.</p>';
+}
+function renderDashDemo(){
+  $('k-activas').textContent='2';$('k-hoy').textContent='5';$('k-prom').textContent='00:18:42';$('k-fotos').textContent='34';
+  $('dash-activas').innerHTML='<div class="row-item"><div><div class="r-main">003 - Carulla Pepe Sierra</div><div class="r-sub">Ana Mercaderista</div></div><div class="r-time">00:12:05</div></div>';
+  $('dash-ranking').innerHTML='<div class="row-item"><div class="r-main">1. Ana M.</div><div class="r-badge">3</div></div><div class="row-item"><div class="r-main">2. Luis P.</div><div class="r-badge">2</div></div>';
+  $('dash-ultimas').innerHTML='<div class="row-item"><div><div class="r-main">002 - Éxito Calle 80</div><div class="r-sub">Ana M. · 12:35</div></div><div class="r-sub">6 fotos · 00:01:42</div></div>';
+}
+
 
 /* init */
 loadPDVs();
