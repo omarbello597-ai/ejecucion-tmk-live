@@ -547,13 +547,45 @@ let pendingType=null;
 document.querySelectorAll('.evcard').forEach(card=>{
   card.onclick=()=>{ pendingType=card.dataset.type; $('file-input').click(); };
 });
-$('file-input').onchange=e=>{
-  const files=[...e.target.files]; if(!files.length)return;
-  files.forEach(f=>{
-    exec.fotos[pendingType].push(f);
-    const url=URL.createObjectURL(f);
-    const img=document.createElement('img'); img.src=url; $('thumbs').appendChild(img);
+
+/* Comprime una imagen con canvas: máx 1600px lado mayor, calidad 0.7.
+   Si algo falla, devuelve el archivo original (nunca se pierde la evidencia). */
+function comprimirImagen(file){
+  return new Promise(resolve=>{
+    if(!file.type || !file.type.startsWith('image/')){ resolve(file); return; }
+    const url=URL.createObjectURL(file);
+    const img=new Image();
+    img.onload=()=>{
+      try{
+        const MAX=1600;
+        let {width:w,height:h}=img;
+        if(w>h && w>MAX){ h=Math.round(h*MAX/w); w=MAX; }
+        else if(h>=w && h>MAX){ w=Math.round(w*MAX/h); h=MAX; }
+        const canvas=document.createElement('canvas');
+        canvas.width=w; canvas.height=h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        canvas.toBlob(blob=>{
+          URL.revokeObjectURL(url);
+          if(blob && blob.size<file.size){
+            // conservar nombre para que termine en .jpg
+            const cf=new File([blob], (file.name||'foto').replace(/\.\w+$/,'')+'.jpg', {type:'image/jpeg'});
+            resolve(cf);
+          } else resolve(file); // si no mejora, usa original
+        },'image/jpeg',0.7);
+      }catch(err){ URL.revokeObjectURL(url); console.warn('compresión falló, uso original',err); resolve(file); }
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(url); resolve(file); };
+    img.src=url;
   });
+}
+
+$('file-input').onchange=async e=>{
+  const files=[...e.target.files]; if(!files.length)return;
+  for(const f of files){
+    const comp=await comprimirImagen(f);
+    exec.fotos[pendingType].push(comp);
+    const img=document.createElement('img'); img.src=URL.createObjectURL(comp); $('thumbs').appendChild(img);
+  }
   const n=exec.fotos[pendingType].length;
   $('cnt-'+pendingType).textContent=n+' foto'+(n!==1?'s':'');
   const card=document.querySelector('.evcard[data-type="'+pendingType+'"]');
