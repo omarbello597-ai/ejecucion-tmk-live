@@ -804,6 +804,21 @@ $('start-btn').onclick=async()=>{
   // Crear el documento EN CURSO (alimenta el dashboard en vivo)
   if(!DEMO){
     try{
+      // 1) Cerrar automáticamente cualquier visita anterior que quedó activa (evita 2 abiertas)
+      try{
+        const qPrev=query(collection(db,'ejecuciones'), where('uid','==',PROFILE.uid), where('estado','==','en_curso'));
+        const prevSnap=await getDocs(qPrev);
+        for(const dco of prevSnap.docs){
+          const dd=dco.data();
+          await updateDoc(doc(db,'ejecuciones',dco.id),{
+            estado:'finalizada',
+            fin: dd.fin || Date.now(),
+            duracion_seg: dd.duracion_seg || Math.floor((Date.now()-(dd.inicio||Date.now()))/1000),
+            cierre_auto:true, nota_cierre:'Cerrada automáticamente al iniciar otra visita'
+          });
+        }
+      }catch(e){ console.warn('No se pudo autocerrar previa',e); }
+      // 2) Crear la nueva
       const pp=parsePDV(pdv);
       const ref=await addDoc(collection(db,'ejecuciones'),{
         uid:PROFILE.uid, mercaderista:PROFILE.nombre||PROFILE.email,
@@ -1275,6 +1290,20 @@ function pintarMapa(){
 function renderDash(docs){
   LAST_DOCS=docs;
   const activas=docs.filter(d=>d.estado==='en_curso');
+  // Auto-cierre: visitas con más de 4 horas abiertas (olvidadas)
+  if(!DEMO){
+    const LIMITE=4*3600*1000; // 4 horas en ms
+    activas.forEach(d=>{
+      if(d.inicio && (Date.now()-d.inicio) > LIMITE){
+        updateDoc(doc(db,'ejecuciones',d.id),{
+          estado:'finalizada',
+          fin: d.fin || (d.inicio+LIMITE),
+          duracion_seg: d.duracion_seg || Math.floor(LIMITE/1000),
+          cierre_auto:true, nota_cierre:'Cierre automático: superó 4 horas abierta'
+        }).catch(e=>console.warn('auto-cierre falló',e));
+      }
+    });
+  }
   const finHoy=docs.filter(d=>d.estado==='finalizada' && esHoy(d.fin||d.inicio));
   // si el mapa está visible, refrescarlo en vivo
   if(mapaNac && $('tab-mapa').classList.contains('active')) pintarMapa();
@@ -1287,8 +1316,27 @@ function renderDash(docs){
   if(activas.length){
     $('dash-activas').innerHTML=activas.map(d=>(
       '<div class="row-item"><div><div class="r-main">'+d.pdv+'</div><div class="r-sub">'+(d.mercaderista||'—')+'</div></div>'+
-      '<div class="r-time" data-since="'+d.inicio+'">'+fmtTime(Math.floor((Date.now()-d.inicio)/1000))+'</div></div>'
+      '<div style="display:flex;align-items:center;gap:10px">'+
+      '<div class="r-time" data-since="'+d.inicio+'">'+fmtTime(Math.floor((Date.now()-d.inicio)/1000))+'</div>'+
+      '<button class="mini-btn no cerrar-visita" data-id="'+d.id+'" style="padding:6px 10px">Cerrar</button></div></div>'
     )).join('');
+    // listeners de cierre manual (Key Master)
+    $('dash-activas').querySelectorAll('.cerrar-visita').forEach(btn=>{
+      btn.onclick=async()=>{
+        const id=btn.dataset.id;
+        if(!confirm('¿Cerrar esta visita manualmente? Quedará como finalizada.'))return;
+        try{
+          const dco=LAST_DOCS.find(x=>x.id===id);
+          await updateDoc(doc(db,'ejecuciones',id),{
+            estado:'finalizada',
+            fin: (dco&&dco.fin) || Date.now(),
+            duracion_seg: (dco&&dco.duracion_seg) || Math.floor((Date.now()-((dco&&dco.inicio)||Date.now()))/1000),
+            cierre_auto:true, nota_cierre:'Cerrada manualmente desde el tablero'
+          });
+          toast('Visita cerrada');
+        }catch(e){ console.error(e); toast('Error: '+(e.message||e)); }
+      };
+    });
   } else $('dash-activas').innerHTML='<p class="empty">Ninguna tienda activa en este momento.</p>';
   // Ranking de hoy (por # de finalizadas)
   const conteo={};
