@@ -197,7 +197,22 @@
   .qty input{text-align:center;font-family:var(--disp);font-weight:800;font-size:1.4rem}
   .qty-btn{width:50px;height:50px;border:none;border-radius:12px;background:var(--royal);color:#fff;font-size:1.6rem;font-weight:700;cursor:pointer;flex-shrink:0}
   .qty-btn:active{transform:scale(.94)}
+
+  /* Mapa nacional */
+  #mapa-nac{width:100%;height:60vh;min-height:380px;border-radius:12px;border:1px solid var(--line);z-index:0}
+  .map-legend{display:flex;gap:18px;margin-bottom:10px;font-size:.82rem;font-weight:600;color:var(--muted)}
+  .dot-leg{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:5px;vertical-align:middle}
+  .dot-leg.verde{background:#1A9C6E}
+  .dot-leg.azul{background:var(--blue)}
+  .leaflet-popup-content{font-family:var(--body);font-size:.86rem}
+  .leaflet-popup-content b{color:var(--royal)}
+  /* pin activo pulsante */
+  .pin-activo{border-radius:50%;background:#1A9C6E;border:3px solid #fff;box-shadow:0 0 0 0 rgba(26,156,110,.6);animation:pulseMap 1.6s infinite}
+  @keyframes pulseMap{0%{box-shadow:0 0 0 0 rgba(26,156,110,.5)}70%{box-shadow:0 0 0 14px rgba(26,156,110,0)}100%{box-shadow:0 0 0 0 rgba(26,156,110,0)}}
+  .pin-fin{border-radius:50%;background:#1E6FD9;border:3px solid #fff}
 </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
 <div class="wrap">
@@ -294,6 +309,7 @@
     <button class="btn ghost-b" id="sound-btn" style="margin:0 0 14px">🔔 Activar sonido de ventas</button>
     <div class="tabs">
       <button class="tab active" data-tab="tablero">Tablero</button>
+      <button class="tab" data-tab="mapa">Mapa</button>
       <button class="tab" data-tab="usuarios">Usuarios</button>
       <button class="tab" data-tab="ejec">Ejecuciones</button>
     </div>
@@ -320,6 +336,18 @@
       <div class="card">
         <h2>🕒 Últimas finalizadas</h2>
         <div id="dash-ultimas"><p class="sub">Cargando…</p></div>
+      </div>
+    </div>
+
+    <div class="tabpanel" id="tab-mapa">
+      <div class="card" style="padding:12px">
+        <h2 style="margin-bottom:8px">🗺️ Mapa nacional en vivo</h2>
+        <div class="map-legend">
+          <span><i class="dot-leg verde"></i> Activa ahora</span>
+          <span><i class="dot-leg azul"></i> Finalizada hoy</span>
+        </div>
+        <div id="mapa-nac"></div>
+        <p class="sub" id="mapa-info" style="margin-top:8px"></p>
       </div>
     </div>
 
@@ -924,6 +952,7 @@ $('sm-new').onclick=()=>{ $('pdv-select').value=''; show('scr-home'); };
 
 /* ============ DASHBOARD EN VIVO ============ */
 let dashUnsub=null, dashTick=null, ventasUnsub=null;
+let LAST_DOCS=[], mapaNac=null, mapaCapa=null;
 $('open-dash-btn').onclick=()=>{ show('scr-dash'); startDash(); };
 $('dash-back').onclick=()=>{ stopDash(); show('scr-home'); };
 
@@ -978,9 +1007,71 @@ function renderVentas(ventas){
 
 function esHoy(ms){ const d=new Date(ms),n=new Date(); return d.getFullYear()===n.getFullYear()&&d.getMonth()===n.getMonth()&&d.getDate()===n.getDate(); }
 
+/* ============ MAPA NACIONAL EN VIVO ============ */
+function abrirMapa(){
+  if(typeof L==='undefined'){ $('mapa-info').textContent='No se pudo cargar el mapa (sin conexión a Leaflet).'; return; }
+  if(!mapaNac){
+    // Centro aproximado de Colombia
+    mapaNac=L.map('mapa-nac').setView([4.65,-74.1], 6);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+      maxZoom:19, attribution:'© OpenStreetMap'
+    }).addTo(mapaNac);
+    mapaCapa=L.layerGroup().addTo(mapaNac);
+  }
+  // Leaflet necesita recalcular tamaño cuando el contenedor estaba oculto
+  setTimeout(()=>{ mapaNac.invalidateSize(); pintarMapa(); }, 200);
+}
+
+function pinDiv(cls,size){ return L.divIcon({className:'',html:'<div class="'+cls+'" style="width:'+size+'px;height:'+size+'px"></div>',iconSize:[size,size],iconAnchor:[size/2,size/2]}); }
+
+function pintarMapa(){
+  if(!mapaNac || !mapaCapa) return;
+  mapaCapa.clearLayers();
+  const activas=LAST_DOCS.filter(d=>d.estado==='en_curso');
+  const finHoy=LAST_DOCS.filter(d=>d.estado==='finalizada' && esHoy(d.fin||d.inicio));
+  const puntos=[];
+  let sinGps=0;
+
+  const dibujar=(d,activo)=>{
+    const gi=d.gps_inicio, gf=d.gps_fin;
+    if(!gi && !gf){ sinGps++; return; }
+    const cls=activo?'pin-activo':'pin-fin';
+    const size=activo?20:15;
+    const estado=activo?'🟢 En curso':'🔵 Finalizada';
+    const hora=new Date(d.inicio).toLocaleTimeString();
+    const popup='<b>'+d.pdv+'</b><br>'+(d.mercaderista||'—')+'<br>'+estado+'<br>Inicio: '+hora+
+      (d.total_fotos!=null?'<br>'+d.total_fotos+' fotos':'');
+    if(gi){
+      const m=L.marker([gi.lat,gi.lng],{icon:pinDiv(cls,size)}).bindPopup(popup);
+      mapaCapa.addLayer(m); puntos.push([gi.lat,gi.lng]);
+    }
+    // línea inicio→cierre si hay ambos y son distintos
+    if(gi && gf && (gi.lat!==gf.lat || gi.lng!==gf.lng)){
+      L.polyline([[gi.lat,gi.lng],[gf.lat,gf.lng]],{color:activo?'#1A9C6E':'#1E6FD9',weight:2,opacity:.6,dashArray:'4,6'}).addTo(mapaCapa);
+      const mf=L.marker([gf.lat,gf.lng],{icon:pinDiv('pin-fin',12)}).bindPopup(popup+'<br><i>(cierre)</i>');
+      mapaCapa.addLayer(mf); puntos.push([gf.lat,gf.lng]);
+    } else if(!gi && gf){
+      const m=L.marker([gf.lat,gf.lng],{icon:pinDiv(cls,size)}).bindPopup(popup);
+      mapaCapa.addLayer(m); puntos.push([gf.lat,gf.lng]);
+    }
+  };
+  activas.forEach(d=>dibujar(d,true));
+  finHoy.forEach(d=>dibujar(d,false));
+
+  $('mapa-info').textContent =
+    activas.length+' activa(s) · '+finHoy.length+' finalizada(s) hoy'+
+    (sinGps>0 ? ' · '+sinGps+' sin GPS (no se muestran)' : '');
+
+  // ajustar vista a los puntos
+  if(puntos.length){ try{ mapaNac.fitBounds(puntos,{padding:[40,40],maxZoom:13}); }catch(e){} }
+}
+
 function renderDash(docs){
+  LAST_DOCS=docs;
   const activas=docs.filter(d=>d.estado==='en_curso');
   const finHoy=docs.filter(d=>d.estado==='finalizada' && esHoy(d.fin||d.inicio));
+  // si el mapa está visible, refrescarlo en vivo
+  if(mapaNac && $('tab-mapa').classList.contains('active')) pintarMapa();
   // KPIs
   $('k-activas').textContent=activas.length;
   $('k-hoy').textContent=finHoy.length;
@@ -1026,6 +1117,7 @@ document.querySelectorAll('.tab').forEach(t=>{
     $('tab-'+t.dataset.tab).classList.add('active');
     if(t.dataset.tab==='usuarios') loadUsers();
     if(t.dataset.tab==='ejec') loadEjec();
+    if(t.dataset.tab==='mapa') abrirMapa();
   };
 });
 
