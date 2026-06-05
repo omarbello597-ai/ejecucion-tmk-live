@@ -210,6 +210,14 @@
   .pin-activo{border-radius:50%;background:#1A9C6E;border:3px solid #fff;box-shadow:0 0 0 0 rgba(26,156,110,.6);animation:pulseMap 1.6s infinite}
   @keyframes pulseMap{0%{box-shadow:0 0 0 0 rgba(26,156,110,.5)}70%{box-shadow:0 0 0 14px rgba(26,156,110,0)}100%{box-shadow:0 0 0 0 rgba(26,156,110,0)}}
   .pin-fin{border-radius:50%;background:#1E6FD9;border:3px solid #fff}
+
+  /* Etiqueta de nombre en los pines del mapa */
+  .pin-wrap{position:relative;overflow:visible!important}
+  .pin-label{position:absolute;left:50%;top:100%;transform:translateX(-50%);margin-top:3px;
+    white-space:nowrap;background:rgba(255,255,255,.92);color:var(--royal);
+    font-family:var(--body);font-weight:700;font-size:11px;line-height:1;
+    padding:2px 6px;border-radius:6px;border:1px solid var(--line);
+    box-shadow:0 1px 4px rgba(0,0,0,.18);pointer-events:none}
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -336,6 +344,11 @@
       <div class="card">
         <h2>🕒 Últimas finalizadas</h2>
         <div id="dash-ultimas"><p class="sub">Cargando…</p></div>
+      </div>
+      <div class="card">
+        <h2>🚗 Traslados entre tiendas (hoy)</h2>
+        <p class="sub" style="margin-bottom:4px">Tiempo y distancia entre el cierre de una tienda y el inicio de la siguiente.</p>
+        <div id="dash-traslados"><p class="sub">Cargando…</p></div>
       </div>
     </div>
 
@@ -1022,7 +1035,14 @@ function abrirMapa(){
   setTimeout(()=>{ mapaNac.invalidateSize(); pintarMapa(); }, 200);
 }
 
-function pinDiv(cls,size){ return L.divIcon({className:'',html:'<div class="'+cls+'" style="width:'+size+'px;height:'+size+'px"></div>',iconSize:[size,size],iconAnchor:[size/2,size/2]}); }
+function pinDiv(cls,size,nombre){
+  const lbl = nombre ? '<span class="pin-label">'+nombre+'</span>' : '';
+  return L.divIcon({
+    className:'pin-wrap',
+    html:'<div class="'+cls+'" style="width:'+size+'px;height:'+size+'px"></div>'+lbl,
+    iconSize:[size,size], iconAnchor:[size/2,size/2]
+  });
+}
 
 function pintarMapa(){
   if(!mapaNac || !mapaCapa) return;
@@ -1039,10 +1059,11 @@ function pintarMapa(){
     const size=activo?20:15;
     const estado=activo?'🟢 En curso':'🔵 Finalizada';
     const hora=new Date(d.inicio).toLocaleTimeString();
-    const popup='<b>'+d.pdv+'</b><br>'+(d.mercaderista||'—')+'<br>'+estado+'<br>Inicio: '+hora+
+    const nombre=d.mercaderista||'—';
+    const popup='<b>'+d.pdv+'</b><br>'+nombre+'<br>'+estado+'<br>Inicio: '+hora+
       (d.total_fotos!=null?'<br>'+d.total_fotos+' fotos':'');
     if(gi){
-      const m=L.marker([gi.lat,gi.lng],{icon:pinDiv(cls,size)}).bindPopup(popup);
+      const m=L.marker([gi.lat,gi.lng],{icon:pinDiv(cls,size,nombre)}).bindPopup(popup);
       mapaCapa.addLayer(m); puntos.push([gi.lat,gi.lng]);
     }
     // línea inicio→cierre si hay ambos y son distintos
@@ -1051,7 +1072,7 @@ function pintarMapa(){
       const mf=L.marker([gf.lat,gf.lng],{icon:pinDiv('pin-fin',12)}).bindPopup(popup+'<br><i>(cierre)</i>');
       mapaCapa.addLayer(mf); puntos.push([gf.lat,gf.lng]);
     } else if(!gi && gf){
-      const m=L.marker([gf.lat,gf.lng],{icon:pinDiv(cls,size)}).bindPopup(popup);
+      const m=L.marker([gf.lat,gf.lng],{icon:pinDiv(cls,size,nombre)}).bindPopup(popup);
       mapaCapa.addLayer(m); puntos.push([gf.lat,gf.lng]);
     }
   };
@@ -1097,6 +1118,47 @@ function renderDash(docs){
     '<div class="row-item"><div><div class="r-main">'+d.pdv+'</div><div class="r-sub">'+(d.mercaderista||'—')+' · '+new Date(d.fin||d.inicio).toLocaleTimeString()+'</div></div>'+
     '<div class="r-sub">'+(d.total_fotos||0)+' fotos · '+(d.duracion_seg?fmtTime(d.duracion_seg):'—')+'</div></div>'
   )).join('') : '<p class="empty">Sin ejecuciones finalizadas.</p>';
+  renderTraslados(finHoy);
+}
+
+/* Distancia en km entre dos coords (Haversine) */
+function distanciaKm(a,b){
+  if(!a||!b) return null;
+  const R=6371, rad=Math.PI/180;
+  const dLat=(b.lat-a.lat)*rad, dLng=(b.lng-a.lng)*rad;
+  const la1=a.lat*rad, la2=b.lat*rad;
+  const x=Math.sin(dLat/2)**2 + Math.cos(la1)*Math.cos(la2)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+
+/* Traslados: entre cierre de una tienda y el inicio de la siguiente, por mercaderista */
+function renderTraslados(finHoy){
+  // agrupar por mercaderista (uid)
+  const porMerca={};
+  finHoy.forEach(d=>{ const k=d.uid||d.mercaderista||'—'; (porMerca[k]=porMerca[k]||[]).push(d); });
+  const filas=[];
+  Object.values(porMerca).forEach(arr=>{
+    arr.sort((a,b)=>(a.inicio||0)-(b.inicio||0));
+    for(let i=0;i<arr.length-1;i++){
+      const A=arr[i], B=arr[i+1];
+      if(!A.fin || !B.inicio) continue;
+      const seg=Math.floor((B.inicio-A.fin)/1000);
+      if(seg<0) continue;
+      const km=distanciaKm(A.gps_fin||A.gps_inicio, B.gps_inicio||B.gps_fin);
+      filas.push({ merca:A.mercaderista||'—', desde:A.nombre_tienda||A.pdv, hasta:B.nombre_tienda||B.pdv, seg, km, hora:B.inicio });
+    }
+  });
+  filas.sort((a,b)=>b.hora-a.hora);
+  if(!filas.length){ $('dash-traslados').innerHTML='<p class="empty">Aún no hay traslados registrados hoy.</p>'; return; }
+  $('dash-traslados').innerHTML=filas.map(f=>{
+    const largo = f.seg>3600; // > 60 min
+    const tiempo = fmtTime(f.seg);
+    const dist = f.km!=null ? f.km.toFixed(1)+' km' : 's/GPS';
+    return '<div class="row-item">'+
+      '<div><div class="r-main">'+f.desde+' → '+f.hasta+'</div>'+
+      '<div class="r-sub">'+f.merca+' · '+dist+'</div></div>'+
+      '<div class="r-time" style="'+(largo?'color:var(--red)':'color:var(--royal)')+'">'+tiempo+(largo?' ⚠':'')+'</div></div>';
+  }).join('');
 }
 function renderDashDemo(){
   $('k-activas').textContent='2';$('k-hoy').textContent='5';$('k-prom').textContent='00:18:42';$('k-ventas').textContent='17';
@@ -1106,6 +1168,7 @@ function renderDashDemo(){
   if($('dash-productos')) $('dash-productos').innerHTML=PRODUCTOS.map(p=>(
     '<div class="prod-dash"><img class="prod-img" src="'+p.foto+'"><div class="prod-info"><div class="prod-name">'+p.nombre+'</div><div class="prod-ean">'+p.ean+'</div></div><div class="pc-wrap"><div class="pc-day">'+Math.floor(Math.random()*8)+'</div><div class="pc-tot">total: '+Math.floor(Math.random()*120)+'</div></div></div>'
   )).join('');
+  if($('dash-traslados')) $('dash-traslados').innerHTML='<div class="row-item"><div><div class="r-main">Éxito Country → Ara Soacha</div><div class="r-sub">Ana M. · 4.2 km</div></div><div class="r-time" style="color:var(--royal)">00:23:10</div></div><div class="row-item"><div><div class="r-main">Jumbo 170 → D1 Suba</div><div class="r-sub">Luis P. · 8.7 km</div></div><div class="r-time" style="color:var(--red)">01:12:40 ⚠</div></div>';
 }
 
 /* ============ PESTAÑAS DEL PANEL ============ */
