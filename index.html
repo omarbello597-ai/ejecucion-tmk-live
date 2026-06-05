@@ -226,6 +226,16 @@
     font-family:var(--body);font-weight:700;font-size:11px;line-height:1;
     padding:2px 6px;border-radius:6px;border:1px solid var(--line);
     box-shadow:0 1px 4px rgba(0,0,0,.18);pointer-events:none}
+
+  /* Buscador de tiendas */
+  .tienda-results{max-height:240px;overflow:auto;margin-top:4px}
+  .tienda-opt{padding:11px 12px;border-bottom:1px solid var(--line);cursor:pointer;font-size:.9rem}
+  .tienda-opt:hover{background:#f3f6fc}
+  .tienda-opt .to-name{font-weight:600;color:var(--royal)}
+  .tienda-opt .to-sub{font-size:.76rem;color:var(--muted)}
+  .tienda-elegida{margin-top:8px;padding:12px;background:#E3F6EE;border:1px solid #1A9C6E;border-radius:10px;font-size:.9rem}
+  .tienda-elegida .te-name{font-weight:700;color:var(--royal)}
+  .tienda-elegida .te-sub{font-size:.78rem;color:var(--muted)}
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -300,10 +310,15 @@
     <div class="banner">📍 Selecciona la tienda y comienza tu ejecución en vivo.</div>
     <div class="card">
       <h2>Nueva ejecución</h2>
-      <label>Punto de venta</label>
-      <select id="pdv-select"><option value="">— Selecciona tienda —</option></select>
+      <label>1. Cadena</label>
+      <select id="cadena-select"><option value="">— Selecciona cadena —</option></select>
+      <label style="margin-top:12px">2. Tienda</label>
+      <input id="tienda-buscar" type="text" placeholder="Escribe para buscar tu tienda…" autocomplete="off" disabled>
+      <div id="tienda-results" class="tienda-results"></div>
+      <div id="tienda-elegida" class="tienda-elegida" style="display:none"></div>
       <div id="gpsStart" class="loctxt"></div>
-      <button class="btn" id="start-btn">▶ Iniciar ejecución</button>
+      <button class="btn" id="start-btn" disabled>▶ Iniciar ejecución</button>
+      <p class="link" id="tienda-no-aparece" style="margin-top:10px">🔍 Mi tienda no aparece</p>
     </div>
     <div class="card" id="resumeCard" style="display:none;border-color:var(--amber)">
       <h2>⏱ Ejecución en curso</h2>
@@ -375,6 +390,11 @@
 
     <div class="tabpanel" id="tab-usuarios">
       <div class="card">
+        <h2>🏪 Solicitudes de tienda nueva</h2>
+        <p class="sub" style="margin-bottom:8px">Tiendas que el equipo no encontró. Al aprobar, se agregan a la base.</p>
+        <div id="solic-list"><p class="sub">Cargando…</p></div>
+      </div>
+      <div class="card">
         <h2>👥 Usuarios</h2>
         <p class="sub" style="margin-bottom:8px">Aprueba y asigna rol a tu equipo.</p>
         <div id="users-list"><p class="sub">Cargando…</p></div>
@@ -430,6 +450,30 @@
     <label>Observaciones (opcional)</label>
     <textarea id="ex-notes" rows="2" placeholder="Notas de la visita..."></textarea>
     <button class="btn red" id="finish-btn">■ Finalizar ejecución</button>
+  </section>
+
+  <!-- ===== SOLICITAR TIENDA NUEVA ===== -->
+  <section id="scr-nueva-tienda" class="screen">
+    <div class="top">
+      <div class="tophead"><div class="name">🏪 Tienda no encontrada</div></div>
+      <button class="iconbtn" id="nt-back">‹</button>
+    </div>
+    <div class="card">
+      <p class="sub" style="margin-bottom:10px">Completa los datos de la tienda que no aparece. El Key Master la revisará y la agregará a la base.</p>
+      <label>Nombre de la tienda *</label>
+      <input id="nt-nombre" type="text" placeholder="Ej: Éxito Calle 80">
+      <label>Cadena *</label>
+      <select id="nt-cadena"><option value="">— Selecciona —</option></select>
+      <label>Ciudad *</label>
+      <input id="nt-ciudad" type="text" placeholder="Ej: Bogotá">
+      <label>Dirección</label>
+      <input id="nt-direccion" type="text" placeholder="Ej: Calle 80 # 65-07">
+      <label>Código de tienda (si lo sabes)</label>
+      <input id="nt-codigo" type="text" placeholder="Opcional">
+      <label>Nota para el Key Master</label>
+      <textarea id="nt-nota" rows="2" placeholder="Cuéntale por qué necesitas esta tienda…"></textarea>
+      <button class="btn" id="nt-enviar">Enviar solicitud</button>
+    </div>
   </section>
 
   <!-- ===== REGISTRAR VENTA ===== -->
@@ -555,15 +599,102 @@ const PRODUCTOS=[
   {ean:"7702155993185", nombre:"Cremagic Super Poderosa 300ml", foto:"data:image/jpeg;base64,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"},
 ];
 
-const PDVS = [
-  "001 - Éxito Country","002 - Éxito Calle 80","003 - Carulla Pepe Sierra",
-  "004 - Jumbo Calle 170","005 - Olímpica Cedritos","006 - D1 Suba",
-  "007 - Ara Soacha","008 - Makro Av 68","009 - Alkosto Venecia","010 - PriceSmart 116"
-];
-function loadPDVs(){
-  const sel=$('pdv-select');
-  PDVS.forEach(p=>{const o=document.createElement('option');o.value=p;o.textContent=p;sel.appendChild(o);});
+/* ============ PUNTOS DE VENTA (desde Firestore) ============ */
+let TIENDAS=[];          // todas las tiendas cargadas
+let TIENDAS_CADENA=[];   // tiendas de la cadena seleccionada
+let pdvElegido=null;     // {nombre, codigo, cadena, ciudad, ...}
+
+async function cargarTiendas(){
+  if(DEMO){
+    TIENDAS=[{nombre:'001 - Éxito Country (demo)',cadena:'Almacenes Exito S.A',ciudad:'Bogotá',codigo:'001'}];
+  } else {
+    try{
+      const snap=await getDocs(collection(db,'pdvs'));
+      TIENDAS=[]; snap.forEach(d=>TIENDAS.push(d.data()));
+    }catch(e){ console.error('No se pudieron cargar tiendas',e); toast('Error al cargar tiendas'); return; }
+  }
+  // llenar selector de cadenas (únicas, ordenadas)
+  const cadenas=[...new Set(TIENDAS.map(t=>t.cadena).filter(Boolean))].sort();
+  const sel=$('cadena-select');
+  sel.innerHTML='<option value="">— Selecciona cadena —</option>'+
+    cadenas.map(c=>'<option value="'+c.replace(/"/g,'&quot;')+'">'+c+'</option>').join('');
+  // llenar también el selector del formulario de tienda nueva
+  const selNT=$('nt-cadena');
+  if(selNT) selNT.innerHTML='<option value="">— Selecciona —</option>'+
+    cadenas.map(c=>'<option value="'+c.replace(/"/g,'&quot;')+'">'+c+'</option>').join('');
 }
+
+// Al elegir cadena → habilitar buscador con las tiendas de esa cadena
+$('cadena-select').onchange=()=>{
+  const cad=$('cadena-select').value;
+  pdvElegido=null; $('tienda-elegida').style.display='none';
+  $('tienda-results').innerHTML=''; $('start-btn').disabled=true;
+  const inp=$('tienda-buscar');
+  if(!cad){ inp.disabled=true; inp.value=''; return; }
+  TIENDAS_CADENA=TIENDAS.filter(t=>t.cadena===cad).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  inp.disabled=false; inp.value=''; inp.placeholder='Buscar entre '+TIENDAS_CADENA.length+' tiendas de '+cad+'…';
+  inp.focus();
+  renderTiendaResultados('');
+};
+
+$('tienda-buscar').oninput=()=>renderTiendaResultados($('tienda-buscar').value);
+
+function renderTiendaResultados(q){
+  q=(q||'').toLowerCase().trim();
+  let lista=TIENDAS_CADENA;
+  if(q) lista=lista.filter(t=>(t.nombre||'').toLowerCase().includes(q)||(t.ciudad||'').toLowerCase().includes(q));
+  lista=lista.slice(0,50); // máx 50 visibles para no saturar
+  if(!lista.length){ $('tienda-results').innerHTML='<p class="sub" style="padding:10px">Sin resultados. Usa "Mi tienda no aparece" abajo.</p>'; return; }
+  $('tienda-results').innerHTML=lista.map((t,i)=>{
+    const idx=TIENDAS_CADENA.indexOf(t);
+    return '<div class="tienda-opt" data-i="'+idx+'"><div class="to-name">'+t.nombre+'</div>'+
+      '<div class="to-sub">'+(t.ciudad||'')+(t.codigo?' · cód '+t.codigo:'')+'</div></div>';
+  }).join('');
+  $('tienda-results').querySelectorAll('.tienda-opt').forEach(el=>{
+    el.onclick=()=>elegirTienda(TIENDAS_CADENA[+el.dataset.i]);
+  });
+}
+
+function elegirTienda(t){
+  pdvElegido=t;
+  $('tienda-results').innerHTML='';
+  $('tienda-buscar').value=t.nombre;
+  $('tienda-elegida').style.display='block';
+  $('tienda-elegida').innerHTML='<div class="te-name">✓ '+t.nombre+'</div><div class="te-sub">'+(t.ciudad||'')+' · '+(t.cadena||'')+(t.codigo?' · cód '+t.codigo:'')+'</div>';
+  $('start-btn').disabled=false;
+}
+
+function loadPDVs(){ cargarTiendas(); }
+
+/* ============ SOLICITUD DE TIENDA NUEVA ============ */
+$('tienda-no-aparece').onclick=()=>{
+  // pre-cargar la cadena ya seleccionada, si la hay
+  if($('cadena-select').value && $('nt-cadena')) $('nt-cadena').value=$('cadena-select').value;
+  $('nt-nombre').value=''; $('nt-ciudad').value=''; $('nt-direccion').value=''; $('nt-codigo').value=''; $('nt-nota').value='';
+  show('scr-nueva-tienda');
+};
+$('nt-back').onclick=()=>show('scr-home');
+
+$('nt-enviar').onclick=async()=>{
+  const nombre=$('nt-nombre').value.trim(), cadena=$('nt-cadena').value, ciudad=$('nt-ciudad').value.trim();
+  if(!nombre||!cadena||!ciudad){ toast('Completa nombre, cadena y ciudad'); return; }
+  $('nt-enviar').disabled=true; $('nt-enviar').textContent='Enviando...';
+  if(DEMO){ toast('Solicitud enviada (demo)'); $('nt-enviar').disabled=false; $('nt-enviar').textContent='Enviar solicitud'; show('scr-home'); return; }
+  try{
+    await addDoc(collection(db,'solicitudes_tienda'),{
+      nombre, cadena, ciudad,
+      direccion:$('nt-direccion').value.trim(),
+      codigo:$('nt-codigo').value.trim(),
+      nota:$('nt-nota').value.trim(),
+      estado:'pendiente',
+      solicitante_uid:PROFILE.uid, solicitante:PROFILE.nombre||PROFILE.email,
+      ts:Date.now(), creado:serverTimestamp()
+    });
+    toast('✓ Solicitud enviada al Key Master');
+    show('scr-home');
+  }catch(e){ console.error(e); toast('Error: '+(e.message||e)); }
+  $('nt-enviar').disabled=false; $('nt-enviar').textContent='Enviar solicitud';
+};
 
 /* ============ AUTH ============ */
 $('go-register').onclick=()=>{$('loginBox').classList.add('hidden');$('regBox').classList.remove('hidden');};
@@ -638,8 +769,9 @@ function enterApp(){
 
 /* ============ EJECUCIÓN ============ */
 $('start-btn').onclick=async()=>{
-  const pdv=$('pdv-select').value;
-  if(!pdv){toast('Selecciona un punto de venta');return;}
+  if(!pdvElegido){toast('Selecciona cadena y tienda');return;}
+  // pdv en formato "codigo - nombre" (compatible con parsePDV). Si no hay código, solo el nombre.
+  const pdv = pdvElegido.codigo ? (pdvElegido.codigo+' - '+pdvElegido.nombre) : pdvElegido.nombre;
   $('start-btn').disabled=true; $('start-btn').textContent='Capturando ubicación...';
   let gps=await getGPS();
   if(!gps){ // reintento único: la 1ª vez el permiso tarda
@@ -647,6 +779,7 @@ $('start-btn').onclick=async()=>{
     gps=await getGPS();
   }
   exec={ pdv, inicio:Date.now(), gpsInicio:gps, gpsFin:null, docId:null,
+         cadena:pdvElegido.cadena||'', ciudad:pdvElegido.ciudad||'',
          fotos:{ejecucion:[],factura:[],cliente:[],exhibicion:[]}, notas:'', ventas:{} };
   // Crear el documento EN CURSO (alimenta el dashboard en vivo)
   if(!DEMO){
@@ -655,7 +788,8 @@ $('start-btn').onclick=async()=>{
       const ref=await addDoc(collection(db,'ejecuciones'),{
         uid:PROFILE.uid, mercaderista:PROFILE.nombre||PROFILE.email,
         rol:PROFILE.rol||'mercaderista',
-        pdv, codigo_tienda:pp.codigo, nombre_tienda:pp.nombre,
+        pdv, codigo_tienda:pdvElegido.codigo||pp.codigo, nombre_tienda:pdvElegido.nombre||pp.nombre,
+        cadena:pdvElegido.cadena||'', ciudad:pdvElegido.ciudad||'',
         estado:'en_curso',
         inicio:exec.inicio, gps_inicio:gps||null,
         total_fotos:0, creado:serverTimestamp()
@@ -980,7 +1114,7 @@ async function saveExec(ex,durSec,total){
 }
 
 $('sm-home').onclick=()=>show('scr-home');
-$('sm-new').onclick=()=>{ $('pdv-select').value=''; show('scr-home'); };
+$('sm-new').onclick=()=>{ $('cadena-select').value=''; $('tienda-buscar').value=''; $('tienda-buscar').disabled=true; $('tienda-results').innerHTML=''; $('tienda-elegida').style.display='none'; pdvElegido=null; $('start-btn').disabled=true; show('scr-home'); };
 
 /* ============ DASHBOARD EN VIVO ============ */
 let dashUnsub=null, dashTick=null, ventasUnsub=null;
@@ -1197,11 +1331,61 @@ document.querySelectorAll('.tab').forEach(t=>{
     document.querySelectorAll('.tabpanel').forEach(x=>x.classList.remove('active'));
     t.classList.add('active');
     $('tab-'+t.dataset.tab).classList.add('active');
-    if(t.dataset.tab==='usuarios') loadUsers();
+    if(t.dataset.tab==='usuarios'){ loadUsers(); loadSolicitudes(); }
     if(t.dataset.tab==='ejec') loadEjec();
     if(t.dataset.tab==='mapa') abrirMapa();
   };
 });
+
+/* ============ SOLICITUDES DE TIENDA NUEVA (Key Master) ============ */
+async function loadSolicitudes(){
+  if(DEMO){ $('solic-list').innerHTML='<p class="empty">Demo: aquí verás las solicitudes de tiendas.</p>'; return; }
+  $('solic-list').innerHTML='<p class="sub">Cargando…</p>';
+  try{
+    const snap=await getDocs(collection(db,'solicitudes_tienda'));
+    const arr=[]; snap.forEach(d=>arr.push({id:d.id,...d.data()}));
+    const pend=arr.filter(s=>s.estado==='pendiente').sort((a,b)=>(b.ts||0)-(a.ts||0));
+    if(!pend.length){ $('solic-list').innerHTML='<p class="empty">No hay solicitudes pendientes.</p>'; return; }
+    $('solic-list').innerHTML=pend.map(s=>(
+      '<div class="user-row" data-id="'+s.id+'">'+
+        '<div class="u-name">'+s.nombre+'</div>'+
+        '<div class="u-mail">'+(s.cadena||'')+' · '+(s.ciudad||'')+(s.direccion?' · '+s.direccion:'')+(s.codigo?' · cód '+s.codigo:'')+'</div>'+
+        (s.nota?'<div class="u-mail">📝 '+s.nota+'</div>':'')+
+        '<div class="u-mail">Pidió: '+(s.solicitante||'—')+'</div>'+
+        '<div class="u-actions">'+
+          '<button class="mini-btn ok" data-act="aprobar">✓ Aprobar y agregar</button>'+
+          '<button class="mini-btn no" data-act="rechazar">Rechazar</button>'+
+        '</div></div>'
+    )).join('');
+    $('solic-list').querySelectorAll('.mini-btn').forEach(btn=>{
+      btn.onclick=async()=>{
+        const row=btn.closest('.user-row'); const id=row.dataset.id;
+        const s=pend.find(x=>x.id===id); const act=btn.dataset.act;
+        try{
+          if(act==='aprobar'){
+            // crear la tienda en pdvs
+            const slugId='nueva-'+Date.now();
+            await setDoc(doc(db,'pdvs',slugId),{
+              nombre:s.nombre, cadena:s.cadena, ciudad:s.ciudad,
+              direccion:s.direccion||'', codigo:s.codigo||'',
+              departamento:'', ean:'', formato:'',
+              activa:true, origen:'solicitud', creada_por:s.solicitante||''
+            });
+            await updateDoc(doc(db,'solicitudes_tienda',id),{estado:'aprobada'});
+            toast('✓ Tienda agregada a la base');
+            TIENDAS=[]; // forzar recarga del catálogo en la próxima ejecución
+          }
+          if(act==='rechazar'){
+            if(!confirm('¿Rechazar esta solicitud?'))return;
+            await updateDoc(doc(db,'solicitudes_tienda',id),{estado:'rechazada'});
+            toast('Solicitud rechazada');
+          }
+          loadSolicitudes();
+        }catch(e){ console.error(e); toast('Error: '+(e.message||e)); }
+      };
+    });
+  }catch(e){ console.error(e); $('solic-list').innerHTML='<p class="empty">Error al cargar solicitudes.</p>'; }
+}
 
 /* ============ GESTIÓN DE USUARIOS ============ */
 const ROLES=['mercaderista','coordinador','gerente','key_master'];
