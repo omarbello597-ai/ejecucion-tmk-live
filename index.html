@@ -252,6 +252,7 @@
         <input id="li-pass" type="password" placeholder="••••••••" autocomplete="current-password">
         <button class="btn yellow" id="li-btn">Ingresar</button>
         <p class="link" id="go-register">¿No tienes cuenta? Regístrate</p>
+        <p class="link" id="go-reset" style="opacity:.85;font-size:.85rem">¿Olvidaste tu contraseña?</p>
       </div>
       <div id="regBox" class="hidden">
         <h2 style="color:#fff">Crear cuenta</h2>
@@ -480,7 +481,7 @@
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged }
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import { getFirestore, doc, setDoc, getDoc, updateDoc, collection, addDoc, serverTimestamp, onSnapshot, query, where, orderBy, getDocs }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -574,6 +575,16 @@ $('li-btn').onclick=async()=>{
   if(DEMO){PROFILE={nombre:'Usuario Demo',rol:'mercaderista',estado:'aprobado',email};enterApp();return;}
   try{ await signInWithEmailAndPassword(auth,email,pass); }
   catch(e){ toast(authErr(e.code)); }
+};
+// Recuperar contraseña: envía correo de restablecimiento
+$('go-reset').onclick=async()=>{
+  const email=$('li-email').value.trim().toLowerCase();
+  if(!email){ toast('Escribe tu correo arriba y vuelve a tocar aquí'); $('li-email').focus(); return; }
+  if(DEMO){ toast('Demo: se enviaría un correo a '+email); return; }
+  try{
+    await sendPasswordResetEmail(auth,email);
+    toast('📧 Te enviamos un correo para restablecer tu contraseña. Revisa tu bandeja (y spam).');
+  }catch(e){ toast(authErr(e.code)); }
 };
 $('rg-btn').onclick=async()=>{
   const nombre=$('rg-name').value.trim(), email=$('rg-email').value.trim().toLowerCase(),
