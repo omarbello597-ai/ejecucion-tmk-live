@@ -236,6 +236,17 @@
   .tienda-elegida{margin-top:8px;padding:12px;background:#E3F6EE;border:1px solid #1A9C6E;border-radius:10px;font-size:.9rem}
   .tienda-elegida .te-name{font-weight:700;color:var(--royal)}
   .tienda-elegida .te-sub{font-size:.78rem;color:var(--muted)}
+
+  /* Ruta del día (timeline) */
+  .ruta-stop{display:flex;gap:12px;align-items:flex-start}
+  .ruta-num{flex-shrink:0;width:28px;height:28px;border-radius:50%;background:var(--royal);color:#fff;font-family:var(--disp);font-weight:800;font-size:.85rem;display:flex;align-items:center;justify-content:center}
+  .ruta-num.curso{background:#1A9C6E;animation:pulseMap 1.6s infinite}
+  .ruta-body{flex:1;padding-bottom:6px}
+  .ruta-tienda{font-weight:700;color:var(--royal);font-size:.92rem;line-height:1.2}
+  .ruta-meta{font-size:.76rem;color:var(--muted);margin-top:2px}
+  .ruta-trayecto{display:flex;align-items:center;gap:8px;margin:2px 0 2px 13px;padding-left:14px;border-left:2px dashed var(--amber);font-size:.78rem;color:#9A7B12;font-weight:600}
+  .ruta-trayecto.largo{color:var(--red);border-color:var(--red)}
+  .ruta-resumen{background:#f3f6fc;border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:.82rem;color:var(--royal);font-weight:600}
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -373,6 +384,12 @@
         <h2>🚗 Traslados entre tiendas (hoy)</h2>
         <p class="sub" style="margin-bottom:4px">Tiempo y distancia entre el cierre de una tienda y el inicio de la siguiente.</p>
         <div id="dash-traslados"><p class="sub">Cargando…</p></div>
+      </div>
+      <div class="card">
+        <h2>🧭 Ruta del día por mercaderista</h2>
+        <label>Selecciona mercaderista</label>
+        <select id="ruta-merca"><option value="">— Elige —</option></select>
+        <div id="ruta-detalle" style="margin-top:10px"></div>
       </div>
     </div>
 
@@ -1272,6 +1289,19 @@ function renderDash(docs){
     '<div class="r-sub">'+(d.total_fotos||0)+' fotos · '+(d.duracion_seg?fmtTime(d.duracion_seg):'—')+'</div></div>'
   )).join('') : '<p class="empty">Sin ejecuciones finalizadas.</p>';
   renderTraslados(finHoy);
+  // ejecuciones de HOY (finalizadas + en curso) para la ruta del día
+  const hoyTodas=docs.filter(d=> esHoy(d.fin||d.inicio));
+  poblarSelectorRuta(hoyTodas);
+}
+
+let RUTA_DOCS=[];
+function poblarSelectorRuta(hoyTodas){
+  RUTA_DOCS=hoyTodas;
+  const sel=$('ruta-merca'); if(!sel) return;
+  const prev=sel.value;
+  const mercas=[...new Set(hoyTodas.map(d=>d.mercaderista||'—'))].sort();
+  sel.innerHTML='<option value="">— Elige —</option>'+mercas.map(m=>'<option value="'+m.replace(/"/g,'&quot;')+'">'+m+'</option>').join('');
+  if(prev && mercas.includes(prev)){ sel.value=prev; renderRuta(prev); } // mantener selección y refrescar en vivo
 }
 
 /* Distancia en km entre dos coords (Haversine) */
@@ -1297,6 +1327,8 @@ function renderTraslados(finHoy){
       if(!A.fin || !B.inicio) continue;
       const seg=Math.floor((B.inicio-A.fin)/1000);
       if(seg<0) continue;
+      const mismaTienda=(A.nombre_tienda||A.pdv)===(B.nombre_tienda||B.pdv);
+      if(seg<60 || mismaTienda) continue; // filtrar traslados falsos
       const km=distanciaKm(A.gps_fin||A.gps_inicio, B.gps_inicio||B.gps_fin);
       filas.push({ merca:A.mercaderista||'—', desde:A.nombre_tienda||A.pdv, hasta:B.nombre_tienda||B.pdv, seg, km, hora:B.inicio });
     }
@@ -1312,6 +1344,54 @@ function renderTraslados(finHoy){
       '<div class="r-sub">'+f.merca+' · '+dist+'</div></div>'+
       '<div class="r-time" style="'+(largo?'color:var(--red)':'color:var(--royal)')+'">'+tiempo+(largo?' ⚠':'')+'</div></div>';
   }).join('');
+}
+
+/* Ruta del día de un mercaderista: tiendas en orden, tiempo en tienda y traslados */
+const $rutaSel=document.getElementById('ruta-merca');
+if($rutaSel) $rutaSel.onchange=()=>renderRuta($rutaSel.value);
+
+function renderRuta(merca){
+  const cont=$('ruta-detalle');
+  if(!merca){ cont.innerHTML=''; return; }
+  let visitas=RUTA_DOCS.filter(d=>(d.mercaderista||'—')===merca).sort((a,b)=>(a.inicio||0)-(b.inicio||0));
+  if(!visitas.length){ cont.innerHTML='<p class="empty">Sin visitas hoy.</p>'; return; }
+
+  let html='';
+  let totalTraslado=0, totalEnTienda=0, kmTotal=0;
+  visitas.forEach((v,i)=>{
+    const enCurso = v.estado==='en_curso';
+    const hora = new Date(v.inicio).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    const tienda = v.nombre_tienda || v.pdv;
+    // tiempo en tienda
+    let enTienda='en curso';
+    if(!enCurso && v.duracion_seg){ enTienda=fmtTime(v.duracion_seg); totalEnTienda+=v.duracion_seg; }
+    html+='<div class="ruta-stop">'+
+      '<div class="ruta-num'+(enCurso?' curso':'')+'">'+(i+1)+'</div>'+
+      '<div class="ruta-body"><div class="ruta-tienda">'+tienda+'</div>'+
+      '<div class="ruta-meta">🕐 '+hora+' · '+(enCurso?'🟢 en curso':'⏱ '+enTienda+' en tienda')+
+        ' · '+(v.total_fotos||0)+' fotos</div></div></div>';
+    // traslado a la siguiente visita
+    if(i < visitas.length-1){
+      const B=visitas[i+1];
+      if(v.fin && B.inicio){
+        const seg=Math.floor((B.inicio - v.fin)/1000);
+        const mismaTienda = (v.nombre_tienda||v.pdv)===(B.nombre_tienda||B.pdv);
+        // FILTRO: ignorar traslados falsos (misma tienda, o < 60 seg)
+        if(seg>=60 && !mismaTienda){
+          const km=distanciaKm(v.gps_fin||v.gps_inicio, B.gps_inicio||B.gps_fin);
+          totalTraslado+=seg; if(km!=null) kmTotal+=km;
+          const largo=seg>3600;
+          html+='<div class="ruta-trayecto'+(largo?' largo':'')+'">🚗 '+fmtTime(seg)+(km!=null?' · '+km.toFixed(1)+' km':'')+(largo?' ⚠':'')+'</div>';
+        } else {
+          html+='<div class="ruta-trayecto" style="color:var(--muted);border-color:var(--line)">· (mismo punto o traslado mínimo, omitido)</div>';
+        }
+      }
+    }
+  });
+  const resumen='<div class="ruta-resumen">📊 '+visitas.length+' visita(s) · '+
+    'En tienda: '+fmtTime(totalEnTienda)+' · Traslados: '+fmtTime(totalTraslado)+
+    (kmTotal>0?' · '+kmTotal.toFixed(1)+' km recorridos':'')+'</div>';
+  cont.innerHTML=resumen+html;
 }
 function renderDashDemo(){
   $('k-activas').textContent='2';$('k-hoy').textContent='5';$('k-prom').textContent='00:18:42';$('k-ventas').textContent='17';
