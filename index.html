@@ -784,6 +784,27 @@ function enterApp(){
   $('hm-role').textContent=(PROFILE.rol||'mercaderista').replace('_',' ');
   const esMando = ['key_master','gerente'].includes(PROFILE.rol) || SUPER_ADMINS.includes((PROFILE.email||'').toLowerCase());
   $('dashboardCard').style.display = esMando ? 'block' : 'none';
+  // Si Android recargó la app a media visita, recuperarla y volver a ella
+  if(!exec && restaurarExecLocal()){
+    // repintar la pantalla de ejecución con los datos restaurados
+    $('ex-pdv').textContent=exec.pdv;
+    $('ex-gps').textContent = exec.gpsInicio ? ('📍 GPS '+exec.gpsInicio.lat+', '+exec.gpsInicio.lng) : '📍 GPS no disponible';
+    ['ejecucion','factura','cliente','exhibicion'].forEach(t=>{
+      const n=(exec.fotos[t]||[]).length; $('cnt-'+t).textContent=n+' foto'+(n!==1?'s':'');
+      const card=document.querySelector('.evcard[data-type="'+t+'"]');
+      if(card && n>0){ card.classList.add('has'); let b=card.querySelector('.badge'); if(!b){b=document.createElement('div');b.className='badge';card.appendChild(b);} b.textContent=n; }
+    });
+    // repintar miniaturas de fotos ya subidas
+    $('thumbs').innerHTML='';
+    Object.keys(exec.fotos).forEach(t=>exec.fotos[t].forEach(f=>{ if(f.url){ const img=document.createElement('img'); img.src=f.url; $('thumbs').appendChild(img); } }));
+    $('ex-notes').value=exec.notas||'';
+    renderGaleriaVentas();
+    startTimer();
+    toast('↩️ Recuperamos tu visita en curso');
+    show('scr-exec');
+    return;
+  }
+  updateResume();
   show('scr-home');
 }
 
@@ -840,6 +861,7 @@ $('start-btn').onclick=async()=>{
   renderGaleriaVentas();
   document.querySelectorAll('.evcard').forEach(c=>{c.classList.remove('has');const b=c.querySelector('.badge');if(b)b.remove();});
   startTimer();
+  guardarExecLocal();
   show('scr-exec');
 };
 function startTimer(){
@@ -857,6 +879,46 @@ function updateResume(){
   } else $('resumeCard').style.display='none';
 }
 $('resume-btn').onclick=()=>{ if(exec){startTimer();show('scr-exec');} };
+
+/* ===== Persistencia de la visita en curso (sobrevive recargas de Android) ===== */
+const EXEC_KEY='tmk_exec_encurso';
+function guardarExecLocal(){
+  try{
+    if(!exec){ localStorage.removeItem(EXEC_KEY); return; }
+    // Guardar versión ligera: las fotos solo por su URL ya subida (los File no son serializables)
+    const fotosLite={};
+    for(const t of Object.keys(exec.fotos||{})){
+      fotosLite[t]=(exec.fotos[t]||[]).filter(it=>it&&it.url).map(it=>({url:it.url,subiendo:false}));
+    }
+    const lite={
+      pdv:exec.pdv, inicio:exec.inicio, gpsInicio:exec.gpsInicio, gpsFin:exec.gpsFin,
+      docId:exec.docId, cadena:exec.cadena, ciudad:exec.ciudad,
+      notas:exec.notas||'', ventas:exec.ventas||{}, fotos:fotosLite, _ts:Date.now()
+    };
+    localStorage.setItem(EXEC_KEY, JSON.stringify(lite));
+  }catch(e){ console.warn('No se pudo guardar visita local',e); }
+}
+function restaurarExecLocal(){
+  try{
+    const raw=localStorage.getItem(EXEC_KEY); if(!raw) return false;
+    const lite=JSON.parse(raw);
+    // Validar: que tenga docId y no sea muy vieja (máx 5 horas)
+    if(!lite || !lite.docId) return false;
+    if(Date.now()-(lite._ts||0) > 5*3600*1000){ localStorage.removeItem(EXEC_KEY); return false; }
+    exec={
+      pdv:lite.pdv, inicio:lite.inicio, gpsInicio:lite.gpsInicio, gpsFin:lite.gpsFin,
+      docId:lite.docId, cadena:lite.cadena||'', ciudad:lite.ciudad||'',
+      notas:lite.notas||'', ventas:lite.ventas||{},
+      fotos:{ejecucion:[],factura:[],cliente:[],exhibicion:[]}
+    };
+    // restaurar fotos ya subidas (solo URL, sin File)
+    for(const t of Object.keys(exec.fotos)){
+      if(lite.fotos&&lite.fotos[t]) exec.fotos[t]=lite.fotos[t].map(f=>({file:null,url:f.url,subiendo:false}));
+    }
+    return true;
+  }catch(e){ console.warn('No se pudo restaurar visita local',e); return false; }
+}
+function limpiarExecLocal(){ try{ localStorage.removeItem(EXEC_KEY); }catch(e){} }
 
 /* fotos */
 let pendingType=null;
@@ -941,6 +1003,7 @@ async function subirFotoEnVivo(tipo, idx, file, imgEl){
       exec.fotos[t].forEach(it=>{ if(it.url){ urls[t].push(it.url); total++; } });
     }
     await updateDoc(doc(db,'ejecuciones',exec.docId),{ fotos:urls, total_fotos:total });
+    guardarExecLocal();
   }catch(err){ console.error('subida en vivo falló',err); /* quedará para el guardado final */ }
 }
 
@@ -1003,6 +1066,7 @@ $('vt-registrar').onclick=async()=>{
     await registrarVenta(v, v.factura);
     if(!exec.ventas) exec.ventas={};
     exec.ventas[v.ean]=(exec.ventas[v.ean]||0)+v.cantidad;
+    guardarExecLocal();
     ringCelebracion();
     toast('🎉 ¡Venta registrada! +'+v.cantidad);
     ventaPendiente=null;
@@ -1108,7 +1172,7 @@ $('finish-btn').onclick=async()=>{
   $('sm-photos').textContent=total+' fotos';
   $('sm-gps1').textContent=exec.gpsInicio?(exec.gpsInicio.lat+', '+exec.gpsInicio.lng):'—';
   $('sm-gps2').textContent=exec.gpsFin?(exec.gpsFin.lat+', '+exec.gpsFin.lng):'—';
-  exec=null; updateResume();
+  exec=null; limpiarExecLocal(); updateResume();
   show('scr-summary');
 };
 
