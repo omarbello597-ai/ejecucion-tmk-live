@@ -1288,6 +1288,16 @@ function abrirMapa(){
   setTimeout(()=>{ mapaNac.invalidateSize(); pintarMapa(); }, 200);
 }
 
+/* Limpia el nombre de tienda quitando EAN y códigos numéricos para el mapa */
+function limpiarNombreTienda(n){
+  if(!n) return '';
+  let s=String(n);
+  s=s.replace(/[\s-]+\d{6,}\s*$/,'');       // quita EAN final
+  s=s.replace(/\s*-\s*\d{3,5}\s*$/,'');      // quita código intermedio final
+  s=s.replace(/^\s*\d{2,4}\s*-\s*/,'');      // quita código al inicio (ej "081 - ")
+  s=s.replace(/¿/g,'-').replace(/\s{2,}/g,' ').replace(/[\s-]+$/,'').trim();
+  return s;
+}
 function pinDiv(cls,size,nombre,num,tienda){
   let lbl='';
   if(nombre){
@@ -1327,7 +1337,7 @@ function pintarMapa(){
     const estado=activo?'🟢 En curso':'🔵 Finalizada';
     const hora=new Date(d.inicio).toLocaleTimeString();
     const nombre=d.mercaderista||'—';
-    const tienda=d.nombre_tienda||d.pdv||'';
+    const tienda=limpiarNombreTienda(d.nombre_tienda||d.pdv||'');
     const num=seqPorMerca[d.id]||null;
     const popup='<b>'+(num?'#'+num+' · ':'')+d.pdv+'</b><br>'+nombre+'<br>'+estado+'<br>Inicio: '+hora+
       (d.total_fotos!=null?'<br>'+d.total_fotos+' fotos':'');
