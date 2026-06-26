@@ -222,10 +222,11 @@
   /* Etiqueta de nombre en los pines del mapa */
   .pin-wrap{position:relative;overflow:visible!important}
   .pin-label{position:absolute;left:50%;top:100%;transform:translateX(-50%);margin-top:3px;
-    white-space:nowrap;background:rgba(255,255,255,.92);color:var(--royal);
-    font-family:var(--body);font-weight:700;font-size:11px;line-height:1;
-    padding:2px 6px;border-radius:6px;border:1px solid var(--line);
-    box-shadow:0 1px 4px rgba(0,0,0,.18);pointer-events:none}
+    white-space:nowrap;background:rgba(255,255,255,.94);color:var(--royal);
+    font-family:var(--body);font-weight:700;font-size:11px;line-height:1.25;
+    padding:3px 7px;border-radius:6px;border:1px solid var(--line);
+    box-shadow:0 1px 4px rgba(0,0,0,.18);pointer-events:none;text-align:center}
+  .pin-tienda{font-weight:600;font-size:10px;color:var(--muted)}
 
   /* Buscador de tiendas */
   .tienda-results{max-height:240px;overflow:auto;margin-top:4px}
@@ -1287,8 +1288,11 @@ function abrirMapa(){
   setTimeout(()=>{ mapaNac.invalidateSize(); pintarMapa(); }, 200);
 }
 
-function pinDiv(cls,size,nombre,num){
-  const lbl = nombre ? '<span class="pin-label">'+nombre+'</span>' : '';
+function pinDiv(cls,size,nombre,num,tienda){
+  let lbl='';
+  if(nombre){
+    lbl='<span class="pin-label"><b>'+nombre+'</b>'+(tienda?'<br><span class="pin-tienda">'+tienda+'</span>':'')+'</span>';
+  }
   const txt = (num!=null) ? '<span class="pin-num">'+num+'</span>' : '';
   return L.divIcon({
     className:'pin-wrap',
@@ -1323,11 +1327,12 @@ function pintarMapa(){
     const estado=activo?'🟢 En curso':'🔵 Finalizada';
     const hora=new Date(d.inicio).toLocaleTimeString();
     const nombre=d.mercaderista||'—';
+    const tienda=d.nombre_tienda||d.pdv||'';
     const num=seqPorMerca[d.id]||null;
     const popup='<b>'+(num?'#'+num+' · ':'')+d.pdv+'</b><br>'+nombre+'<br>'+estado+'<br>Inicio: '+hora+
       (d.total_fotos!=null?'<br>'+d.total_fotos+' fotos':'');
     if(gi){
-      const m=L.marker([gi.lat,gi.lng],{icon:pinDiv(cls,size,nombre,num)}).bindPopup(popup);
+      const m=L.marker([gi.lat,gi.lng],{icon:pinDiv(cls,size,nombre,num,tienda)}).bindPopup(popup);
       mapaCapa.addLayer(m); puntos.push([gi.lat,gi.lng]);
     }
     // línea inicio→cierre si hay ambos y son distintos
@@ -1336,7 +1341,7 @@ function pintarMapa(){
       const mf=L.marker([gf.lat,gf.lng],{icon:pinDiv('pin-fin',14)}).bindPopup(popup+'<br><i>(cierre)</i>');
       mapaCapa.addLayer(mf); puntos.push([gf.lat,gf.lng]);
     } else if(!gi && gf){
-      const m=L.marker([gf.lat,gf.lng],{icon:pinDiv(cls,size,nombre,num)}).bindPopup(popup);
+      const m=L.marker([gf.lat,gf.lng],{icon:pinDiv(cls,size,nombre,num,tienda)}).bindPopup(popup);
       mapaCapa.addLayer(m); puntos.push([gf.lat,gf.lng]);
     }
   };
