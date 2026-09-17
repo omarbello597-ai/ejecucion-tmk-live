@@ -256,6 +256,26 @@
   .cat-btn{flex:1;padding:14px;border:2px solid var(--line);background:#fff;border-radius:12px;font-family:var(--disp);font-weight:700;font-size:.95rem;color:var(--royal);cursor:pointer;transition:.15s}
   .cat-btn.sel{background:var(--royal);color:#fff;border-color:var(--royal)}
   .cat-btn:active{transform:scale(.97)}
+
+  /* Explorador de evidencias */
+  .exp-breadcrumb{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:.82rem;color:var(--muted);margin-bottom:12px;padding:0 2px}
+  .exp-breadcrumb .crumb{color:var(--royal);font-weight:700;cursor:pointer}
+  .exp-breadcrumb .crumb:hover{text-decoration:underline}
+  .exp-item{display:flex;justify-content:space-between;align-items:center;padding:14px 12px;border-bottom:1px solid var(--line);cursor:pointer}
+  .exp-item:last-child{border:none}
+  .exp-item:active{background:#f3f6fc}
+  .exp-item .ei-name{font-weight:700;color:var(--royal);font-size:.95rem}
+  .exp-item .ei-sub{font-size:.76rem;color:var(--muted)}
+  .exp-item .ei-arrow{color:var(--muted);font-size:1.2rem}
+  .exp-item .ei-count{background:var(--yellow);color:var(--royal);font-family:var(--disp);font-weight:800;border-radius:8px;padding:2px 9px;font-size:.82rem}
+  .exp-fotos{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+  .exp-fotos img{width:100%;height:120px;object-fit:cover;border-radius:10px;border:1px solid var(--line);cursor:pointer}
+  .exp-grupo-tit{font-family:var(--disp);font-weight:700;color:var(--royal);font-size:.9rem;margin:14px 0 4px}
+
+  .cat-edit{display:flex;gap:6px;justify-content:flex-end}
+  .mini-cat{padding:7px 11px;border:1.5px solid var(--line);background:#fff;border-radius:8px;font-family:var(--disp);font-weight:700;font-size:.78rem;color:var(--royal);cursor:pointer}
+  .mini-cat.sel{background:var(--royal);color:#fff;border-color:var(--royal)}
+  .mini-cat:active{transform:scale(.95)}
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -327,8 +347,8 @@
       <div class="tophead"><img class="toplogo" src="data:image/jpeg;base64,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" alt="Cremagic"><div><div class="name" id="hm-name">—</div><div class="role" id="hm-role">mercaderista</div></div></div>
       <button class="iconbtn" id="hm-logout">⏻</button>
     </div>
-    <div class="banner">📍 Selecciona la tienda y comienza tu ejecución en vivo.</div>
-    <div class="card">
+    <div class="banner" id="home-banner">📍 Selecciona la tienda y comienza tu ejecución en vivo.</div>
+    <div class="card" id="nuevaEjecCard">
       <h2>Nueva ejecución</h2>
       <label>1. Categoría</label>
       <div class="cat-btns">
@@ -350,10 +370,27 @@
       <p class="sub" id="resume-info">—</p>
       <button class="btn amber" id="resume-btn">Continuar ejecución</button>
     </div>
+    <div class="card" id="exploradorCard" style="display:none;border-color:var(--green)">
+      <h2>🔎 Explorador de evidencias</h2>
+      <p class="sub">Consulta las fotos por categoría, cliente y tienda.</p>
+      <button class="btn" id="open-explorador-btn" style="background:var(--green)">Abrir explorador</button>
+    </div>
     <div class="card" id="dashboardCard" style="display:none;border-color:var(--royal)">
       <h2>📊 Tablero en vivo</h2>
       <p class="sub">Monitoreo nacional en tiempo real.</p>
       <button class="btn" id="open-dash-btn">Abrir tablero LIVE</button>
+    </div>
+  </section>
+
+  <!-- ===== EXPLORADOR DE EVIDENCIAS ===== -->
+  <section id="scr-explorador" class="screen">
+    <div class="top">
+      <div class="tophead"><div class="name">🔎 Explorador</div></div>
+      <button class="iconbtn" id="exp-back">‹</button>
+    </div>
+    <div id="exp-breadcrumb" class="exp-breadcrumb"></div>
+    <div class="card">
+      <div id="exp-content"><p class="sub">Cargando…</p></div>
     </div>
   </section>
 
@@ -808,10 +845,17 @@ if(!DEMO){
 function enterApp(){
   $('hm-name').textContent=PROFILE.nombre||PROFILE.email;
   $('hm-role').textContent=(PROFILE.rol||'mercaderista').replace('_',' ');
-  const esMando = ['key_master','gerente'].includes(PROFILE.rol) || SUPER_ADMINS.includes((PROFILE.email||'').toLowerCase());
+  const email=(PROFILE.email||'').toLowerCase();
+  const esMando = ['key_master','gerente'].includes(PROFILE.rol) || SUPER_ADMINS.includes(email);
+  const esConsulta = PROFILE.rol==='consulta';
   $('dashboardCard').style.display = esMando ? 'block' : 'none';
+  // El explorador lo ven: rol consulta, key_master y gerente
+  $('exploradorCard').style.display = (esConsulta || esMando) ? 'block' : 'none';
+  // El rol consulta NO puede ejecutar visitas: ocultamos la tarjeta de nueva ejecución
+  $('nuevaEjecCard').style.display = esConsulta ? 'none' : 'block';
+  if(esConsulta){ $('home-banner').textContent='🔎 Consulta las evidencias de las visitas.'; }
   // Si Android recargó la app a media visita, recuperarla y volver a ella
-  if(!exec && restaurarExecLocal()){
+  if(!esConsulta && !exec && restaurarExecLocal()){
     // repintar la pantalla de ejecución con los datos restaurados
     $('ex-pdv').textContent=exec.pdv;
     $('ex-gps').textContent = exec.gpsInicio ? ('📍 GPS '+exec.gpsInicio.lat+', '+exec.gpsInicio.lng) : '📍 GPS no disponible';
@@ -1640,7 +1684,7 @@ async function loadSolicitudes(){
 }
 
 /* ============ GESTIÓN DE USUARIOS ============ */
-const ROLES=['mercaderista','coordinador','gerente','key_master'];
+const ROLES=['mercaderista','consulta','coordinador','gerente','key_master'];
 async function loadUsers(){
   if(DEMO){ $('users-list').innerHTML='<p class="empty">Demo: aquí verás los usuarios registrados.</p>'; return; }
   $('users-list').innerHTML='<p class="sub">Cargando…</p>';
@@ -1718,9 +1762,22 @@ function verDetalle(id){
     }
   }
   if(!fotosHtml) fotosHtml='<p class="sub" style="margin-top:8px">Sin fotos.</p>';
+  // Control de categoría: editable para Key Master / Gerente
+  const puedeEditarCat = ['key_master','gerente'].includes(PROFILE.rol) || SUPER_ADMINS.includes((PROFILE.email||'').toLowerCase());
+  let catHtml;
+  if(puedeEditarCat){
+    catHtml='<div class="stat" style="align-items:flex-start"><span>Categoría</span><div style="text-align:right">'+
+      '<div style="margin-bottom:6px"><b>'+(d.categoria?((d.categoria==='AUTOS'?'🚗 ':'🏠 ')+d.categoria):'— sin asignar —')+'</b></div>'+
+      '<div class="cat-edit">'+
+        '<button class="mini-cat'+(d.categoria==='HOGAR'?' sel':'')+'" data-setcat="HOGAR" data-id="'+d.id+'">🏠 Hogar</button>'+
+        '<button class="mini-cat'+(d.categoria==='AUTOS'?' sel':'')+'" data-setcat="AUTOS" data-id="'+d.id+'">🚗 Autos</button>'+
+      '</div></div></div>';
+  } else {
+    catHtml = d.categoria?'<div class="stat"><span>Categoría</span><b>'+(d.categoria==='AUTOS'?'🚗 ':'🏠 ')+d.categoria+'</b></div>':'';
+  }
   $('det-content').innerHTML=
     '<div class="card"><h2>'+d.pdv+'</h2><p class="sub">'+(d.mercaderista||'—')+'</p>'+
-      (d.categoria?'<div class="stat"><span>Categoría</span><b>'+(d.categoria==='AUTOS'?'🚗 ':'🏠 ')+d.categoria+'</b></div>':'')+
+      catHtml+
       '<div class="stat"><span>Estado</span><b>'+(d.estado||'—')+'</b></div>'+
       '<div class="stat"><span>Inicio</span><b>'+new Date(d.inicio).toLocaleString()+'</b></div>'+
       (d.fin?'<div class="stat"><span>Fin</span><b>'+new Date(d.fin).toLocaleString()+'</b></div>':'')+
@@ -1732,11 +1789,148 @@ function verDetalle(id){
       '<div class="det-group-title">Inicio</div>'+mapLink(g1)+
       '<div class="det-group-title">Cierre</div>'+mapLink(g2)+'</div>'+
     '<div class="card"><h2>📸 Evidencias</h2>'+fotosHtml+'</div>';
+  // listeners de edición de categoría
+  $('det-content').querySelectorAll('.mini-cat').forEach(btn=>{
+    btn.onclick=async()=>{
+      const nuevaCat=btn.dataset.setcat, docId=btn.dataset.id;
+      try{
+        await updateDoc(doc(db,'ejecuciones',docId),{categoria:nuevaCat});
+        // actualizar en cache local y repintar
+        const ix=EJEC_CACHE.findIndex(x=>x.id===docId);
+        if(ix>=0) EJEC_CACHE[ix].categoria=nuevaCat;
+        toast('✓ Categoría: '+nuevaCat);
+        verDetalle(docId);
+      }catch(e){ console.error(e); toast('Error: '+(e.message||e)); }
+    };
+  });
   show('scr-detalle');
 }
 $('det-back').onclick=()=>show('scr-dash');
 
+/* ============ EXPLORADOR DE EVIDENCIAS ============ */
+let EXP_DATA=[];        // todas las ejecuciones finalizadas con fotos
+let expNav={cat:null, cadena:null, tienda:null}; // nivel actual
 
+$('open-explorador-btn').onclick=()=>{ show('scr-explorador'); abrirExplorador(); };
+$('exp-back').onclick=()=>{
+  // retroceder un nivel; si está en la raíz, volver al home
+  if(expNav.tienda){ expNav.tienda=null; renderExplorador(); }
+  else if(expNav.cadena){ expNav.cadena=null; renderExplorador(); }
+  else if(expNav.cat){ expNav.cat=null; renderExplorador(); }
+  else show('scr-home');
+};
+
+async function abrirExplorador(){
+  expNav={cat:null, cadena:null, tienda:null};
+  if(DEMO){ EXP_DATA=[]; $('exp-content').innerHTML='<p class="empty">Demo: aquí verás las evidencias.</p>'; return; }
+  $('exp-content').innerHTML='<p class="sub">Cargando evidencias…</p>';
+  try{
+    // leer las finalizadas (una sola vez). Traer solo las que tienen fotos.
+    const q=query(collection(db,'ejecuciones'), where('estado','==','finalizada'), orderBy('inicio','desc'));
+    const snap=await getDocs(q);
+    EXP_DATA=[]; snap.forEach(d=>{ const x={id:d.id,...d.data()}; if((x.total_fotos||0)>0) EXP_DATA.push(x); });
+    renderExplorador();
+  }catch(e){ console.error('explorador',e); $('exp-content').innerHTML='<p class="empty">Error al cargar. Puede faltar un índice (mira la consola).</p>'; }
+}
+
+function crumbHTML(){
+  let c='<span class="crumb" data-lvl="raiz">Inicio</span>';
+  if(expNav.cat) c+=' ▸ <span class="crumb" data-lvl="cat">'+(expNav.cat==='AUTOS'?'🚗 ':'🏠 ')+expNav.cat+'</span>';
+  if(expNav.cadena) c+=' ▸ <span class="crumb" data-lvl="cadena">'+expNav.cadena+'</span>';
+  if(expNav.tienda) c+=' ▸ <span class="crumb" data-lvl="tienda">'+limpiarNombreTienda(expNav.tienda)+'</span>';
+  return c;
+}
+function bindCrumbs(){
+  $('exp-breadcrumb').querySelectorAll('.crumb').forEach(el=>{
+    el.onclick=()=>{
+      const lvl=el.dataset.lvl;
+      if(lvl==='raiz'){ expNav={cat:null,cadena:null,tienda:null}; }
+      else if(lvl==='cat'){ expNav.cadena=null; expNav.tienda=null; }
+      else if(lvl==='cadena'){ expNav.tienda=null; }
+      renderExplorador();
+    };
+  });
+}
+
+function renderExplorador(){
+  $('exp-breadcrumb').innerHTML=crumbHTML();
+  bindCrumbs();
+  const cont=$('exp-content');
+
+  // NIVEL 1: Categorías
+  if(!expNav.cat){
+    const cats=['HOGAR','AUTOS'];
+    cont.innerHTML=cats.map(c=>{
+      const n=EXP_DATA.filter(d=>(d.categoria||'')===c).length;
+      return '<div class="exp-item" data-cat="'+c+'"><div><div class="ei-name">'+(c==='AUTOS'?'🚗 ':'🏠 ')+c+'</div>'+
+        '<div class="ei-sub">'+n+' visita(s) con fotos</div></div><span class="ei-arrow">›</span></div>';
+    }).join('');
+    // opción "sin categoría" si hay visitas viejas
+    const sinCat=EXP_DATA.filter(d=>!d.categoria).length;
+    if(sinCat) cont.innerHTML+='<div class="exp-item" data-cat="__sin__"><div><div class="ei-name">📁 Sin categoría</div><div class="ei-sub">'+sinCat+' visita(s) anteriores</div></div><span class="ei-arrow">›</span></div>';
+    cont.querySelectorAll('.exp-item').forEach(el=>el.onclick=()=>{ expNav.cat=el.dataset.cat; renderExplorador(); });
+    return;
+  }
+
+  // filtrar por categoría elegida
+  const filtroCategoria=d=> expNav.cat==='__sin__' ? !d.categoria : (d.categoria||'')===expNav.cat;
+  let base=EXP_DATA.filter(filtroCategoria);
+
+  // NIVEL 2: Cadenas (clientes)
+  if(!expNav.cadena){
+    const cadenas={};
+    base.forEach(d=>{ const k=d.cadena||'(sin cadena)'; cadenas[k]=(cadenas[k]||0)+1; });
+    const ordenadas=Object.keys(cadenas).sort();
+    if(!ordenadas.length){ cont.innerHTML='<p class="empty">No hay visitas con fotos en esta categoría.</p>'; return; }
+    cont.innerHTML=ordenadas.map(c=>(
+      '<div class="exp-item" data-cadena="'+c.replace(/"/g,'&quot;')+'"><div><div class="ei-name">'+c+'</div>'+
+      '<div class="ei-sub">'+cadenas[c]+' visita(s)</div></div><span class="ei-arrow">›</span></div>'
+    )).join('');
+    cont.querySelectorAll('.exp-item').forEach(el=>el.onclick=()=>{ expNav.cadena=el.dataset.cadena; renderExplorador(); });
+    return;
+  }
+
+  base=base.filter(d=>(d.cadena||'(sin cadena)')===expNav.cadena);
+
+  // NIVEL 3: Tiendas (agrupadas por nombre de tienda; muestro ciudad como subtítulo)
+  if(!expNav.tienda){
+    const tiendas={};
+    base.forEach(d=>{ const k=d.nombre_tienda||d.pdv||'(sin nombre)'; if(!tiendas[k]) tiendas[k]={n:0,ciudad:d.ciudad||''}; tiendas[k].n++; });
+    const ordenadas=Object.keys(tiendas).sort();
+    cont.innerHTML=ordenadas.map(t=>(
+      '<div class="exp-item" data-tienda="'+t.replace(/"/g,'&quot;')+'"><div><div class="ei-name">'+limpiarNombreTienda(t)+'</div>'+
+      '<div class="ei-sub">'+(tiendas[t].ciudad||'')+'</div></div><span class="ei-count">'+tiendas[t].n+'</span></div>'
+    )).join('');
+    cont.querySelectorAll('.exp-item').forEach(el=>el.onclick=()=>{ expNav.tienda=el.dataset.tienda; renderExplorador(); });
+    return;
+  }
+
+  base=base.filter(d=>(d.nombre_tienda||d.pdv||'(sin nombre)')===expNav.tienda);
+
+  // NIVEL 4: Visitas de esa tienda → fotos
+  if(!base.length){ cont.innerHTML='<p class="empty">Sin visitas.</p>'; return; }
+  const tipos={ejecucion:'🛠️ Ejecución',factura:'🧾 Factura',cliente:'🛒 Cliente',exhibicion:'🏬 Exhibición'};
+  let html='';
+  base.forEach(v=>{
+    const fecha=new Date(v.inicio).toLocaleString();
+    html+='<div style="border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:12px">';
+    html+='<div class="exp-grupo-tit">📅 '+fecha+' · '+(v.mercaderista||'—')+' · '+(v.total_fotos||0)+' fotos</div>';
+    let hayFoto=false;
+    if(v.fotos){
+      for(const t of Object.keys(tipos)){
+        const arr=v.fotos[t]||[];
+        if(arr.length){
+          hayFoto=true;
+          html+='<div class="ei-sub" style="margin-top:6px">'+tipos[t]+' ('+arr.length+')</div>';
+          html+='<div class="exp-fotos">'+arr.map(u=>'<a href="'+u+'" target="_blank"><img src="'+u+'"></a>').join('')+'</div>';
+        }
+      }
+    }
+    if(!hayFoto) html+='<p class="sub">Sin fotos en esta visita.</p>';
+    html+='</div>';
+  });
+  cont.innerHTML=html;
+}
 
 /* init */
 loadPDVs();
