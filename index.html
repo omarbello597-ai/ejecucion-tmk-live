@@ -251,6 +251,11 @@
 
   .pin-activo,.pin-fin{display:flex;align-items:center;justify-content:center}
   .pin-num{color:#fff;font-family:var(--disp,sans-serif);font-weight:800;font-size:12px;line-height:1;pointer-events:none}
+
+  .cat-btns{display:flex;gap:10px;margin-top:4px}
+  .cat-btn{flex:1;padding:14px;border:2px solid var(--line);background:#fff;border-radius:12px;font-family:var(--disp);font-weight:700;font-size:.95rem;color:var(--royal);cursor:pointer;transition:.15s}
+  .cat-btn.sel{background:var(--royal);color:#fff;border-color:var(--royal)}
+  .cat-btn:active{transform:scale(.97)}
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -325,9 +330,14 @@
     <div class="banner">📍 Selecciona la tienda y comienza tu ejecución en vivo.</div>
     <div class="card">
       <h2>Nueva ejecución</h2>
-      <label>1. Cadena</label>
+      <label>1. Categoría</label>
+      <div class="cat-btns">
+        <button type="button" class="cat-btn" data-cat="HOGAR">🏠 HOGAR</button>
+        <button type="button" class="cat-btn" data-cat="AUTOS">🚗 AUTOS</button>
+      </div>
+      <label style="margin-top:12px">2. Cadena</label>
       <select id="cadena-select"><option value="">— Selecciona cadena —</option></select>
-      <label style="margin-top:12px">2. Tienda</label>
+      <label style="margin-top:12px">3. Tienda</label>
       <input id="tienda-buscar" type="text" placeholder="Escribe para buscar tu tienda…" autocomplete="off" disabled>
       <div id="tienda-results" class="tienda-results"></div>
       <div id="tienda-elegida" class="tienda-elegida" style="display:none"></div>
@@ -624,6 +634,21 @@ const PRODUCTOS=[
 let TIENDAS=[];          // todas las tiendas cargadas
 let TIENDAS_CADENA=[];   // tiendas de la cadena seleccionada
 let pdvElegido=null;     // {nombre, codigo, cadena, ciudad, ...}
+let catElegida=null;     // 'HOGAR' | 'AUTOS'
+
+// Botones de categoría
+document.querySelectorAll('.cat-btn').forEach(btn=>{
+  btn.onclick=()=>{
+    catElegida=btn.dataset.cat;
+    document.querySelectorAll('.cat-btn').forEach(b=>b.classList.remove('sel'));
+    btn.classList.add('sel');
+    actualizarBotonIniciar();
+  };
+});
+// habilita "Iniciar" solo si hay categoría Y tienda
+function actualizarBotonIniciar(){
+  $('start-btn').disabled = !(catElegida && pdvElegido);
+}
 
 async function cargarTiendas(){
   if(DEMO){
@@ -682,7 +707,7 @@ function elegirTienda(t){
   $('tienda-buscar').value=t.nombre;
   $('tienda-elegida').style.display='block';
   $('tienda-elegida').innerHTML='<div class="te-name">✓ '+t.nombre+'</div><div class="te-sub">'+(t.ciudad||'')+' · '+(t.cadena||'')+(t.codigo?' · cód '+t.codigo:'')+'</div>';
-  $('start-btn').disabled=false;
+  actualizarBotonIniciar();
 }
 
 function loadPDVs(){ cargarTiendas(); }
@@ -811,6 +836,7 @@ function enterApp(){
 
 /* ============ EJECUCIÓN ============ */
 $('start-btn').onclick=async()=>{
+  if(!catElegida){toast('Selecciona la categoría (Hogar o Autos)');return;}
   if(!pdvElegido){toast('Selecciona cadena y tienda');return;}
   // pdv en formato "codigo - nombre" (compatible con parsePDV). Si no hay código, solo el nombre.
   const pdv = pdvElegido.codigo ? (pdvElegido.codigo+' - '+pdvElegido.nombre) : pdvElegido.nombre;
@@ -820,7 +846,7 @@ $('start-btn').onclick=async()=>{
     await new Promise(r=>setTimeout(r,1200));
     gps=await getGPS();
   }
-  exec={ pdv, inicio:Date.now(), gpsInicio:gps, gpsFin:null, docId:null,
+  exec={ pdv, categoria:catElegida, inicio:Date.now(), gpsInicio:gps, gpsFin:null, docId:null,
          cadena:pdvElegido.cadena||'', ciudad:pdvElegido.ciudad||'',
          fotos:{ejecucion:[],factura:[],cliente:[],exhibicion:[]}, notas:'', ventas:{} };
   // Crear el documento EN CURSO (alimenta el dashboard en vivo)
@@ -846,7 +872,7 @@ $('start-btn').onclick=async()=>{
         uid:PROFILE.uid, mercaderista:PROFILE.nombre||PROFILE.email,
         rol:PROFILE.rol||'mercaderista',
         pdv, codigo_tienda:pdvElegido.codigo||pp.codigo, nombre_tienda:pdvElegido.nombre||pp.nombre,
-        cadena:pdvElegido.cadena||'', ciudad:pdvElegido.ciudad||'',
+        cadena:pdvElegido.cadena||'', ciudad:pdvElegido.ciudad||'', categoria:catElegida,
         estado:'en_curso',
         inicio:exec.inicio, gps_inicio:gps||null,
         total_fotos:0, creado:serverTimestamp()
@@ -893,7 +919,7 @@ function guardarExecLocal(){
     }
     const lite={
       pdv:exec.pdv, inicio:exec.inicio, gpsInicio:exec.gpsInicio, gpsFin:exec.gpsFin,
-      docId:exec.docId, cadena:exec.cadena, ciudad:exec.ciudad,
+      docId:exec.docId, cadena:exec.cadena, ciudad:exec.ciudad, categoria:exec.categoria,
       notas:exec.notas||'', ventas:exec.ventas||{}, fotos:fotosLite, _ts:Date.now()
     };
     localStorage.setItem(EXEC_KEY, JSON.stringify(lite));
@@ -908,7 +934,7 @@ function restaurarExecLocal(){
     if(Date.now()-(lite._ts||0) > 5*3600*1000){ localStorage.removeItem(EXEC_KEY); return false; }
     exec={
       pdv:lite.pdv, inicio:lite.inicio, gpsInicio:lite.gpsInicio, gpsFin:lite.gpsFin,
-      docId:lite.docId, cadena:lite.cadena||'', ciudad:lite.ciudad||'',
+      docId:lite.docId, cadena:lite.cadena||'', ciudad:lite.ciudad||'', categoria:lite.categoria||'',
       notas:lite.notas||'', ventas:lite.ventas||{},
       fotos:{ejecucion:[],factura:[],cliente:[],exhibicion:[]}
     };
@@ -1214,7 +1240,7 @@ async function saveExec(ex,durSec,total){
 }
 
 $('sm-home').onclick=()=>show('scr-home');
-$('sm-new').onclick=()=>{ $('cadena-select').value=''; $('tienda-buscar').value=''; $('tienda-buscar').disabled=true; $('tienda-results').innerHTML=''; $('tienda-elegida').style.display='none'; pdvElegido=null; $('start-btn').disabled=true; show('scr-home'); };
+$('sm-new').onclick=()=>{ $('cadena-select').value=''; $('tienda-buscar').value=''; $('tienda-buscar').disabled=true; $('tienda-results').innerHTML=''; $('tienda-elegida').style.display='none'; pdvElegido=null; catElegida=null; document.querySelectorAll('.cat-btn').forEach(b=>b.classList.remove('sel')); $('start-btn').disabled=true; show('scr-home'); };
 
 /* ============ DASHBOARD EN VIVO ============ */
 let dashUnsub=null, dashTick=null, ventasUnsub=null;
@@ -1694,6 +1720,7 @@ function verDetalle(id){
   if(!fotosHtml) fotosHtml='<p class="sub" style="margin-top:8px">Sin fotos.</p>';
   $('det-content').innerHTML=
     '<div class="card"><h2>'+d.pdv+'</h2><p class="sub">'+(d.mercaderista||'—')+'</p>'+
+      (d.categoria?'<div class="stat"><span>Categoría</span><b>'+(d.categoria==='AUTOS'?'🚗 ':'🏠 ')+d.categoria+'</b></div>':'')+
       '<div class="stat"><span>Estado</span><b>'+(d.estado||'—')+'</b></div>'+
       '<div class="stat"><span>Inicio</span><b>'+new Date(d.inicio).toLocaleString()+'</b></div>'+
       (d.fin?'<div class="stat"><span>Fin</span><b>'+new Date(d.fin).toLocaleString()+'</b></div>':'')+
