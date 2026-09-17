@@ -1225,15 +1225,18 @@ $('dash-back').onclick=()=>{ stopDash(); show('scr-home'); };
 function startDash(){
   if(DEMO){ renderDashDemo(); return; }
   stopDash();
-  // Escucha en vivo TODA la colección de ejecuciones
-  const q=query(collection(db,'ejecuciones'), orderBy('inicio','desc'));
+  // Inicio del día de hoy (medianoche) para NO releer toda la historia (ahorra lecturas/costo)
+  const hoy0=new Date(); hoy0.setHours(0,0,0,0); const desdeHoy=hoy0.getTime();
+  // Escucha en vivo SOLO las ejecuciones de HOY (antes leía toda la colección → costoso)
+  const q=query(collection(db,'ejecuciones'), where('inicio','>=',desdeHoy), orderBy('inicio','desc'));
   dashUnsub=onSnapshot(q, snap=>{
     const docs=[]; snap.forEach(d=>docs.push({id:d.id,...d.data()}));
     renderDash(docs);
-  }, err=>{ console.error('dash snapshot',err); $('dash-activas').innerHTML='<p class="empty">Error al cargar.</p>'; });
-  // Escucha en vivo la colección de VENTAS
+  }, err=>{ console.error('dash snapshot',err); $('dash-activas').innerHTML='<p class="empty">Error al cargar. Puede faltar un índice (mira la consola).</p>'; });
+  // Escucha en vivo SOLO las ventas de HOY
   let primeraCargaVentas=true;
-  ventasUnsub=onSnapshot(collection(db,'ventas'), snap=>{
+  const qv=query(collection(db,'ventas'), where('ts','>=',desdeHoy));
+  ventasUnsub=onSnapshot(qv, snap=>{
     // detectar ventas NUEVAS (solo después de la carga inicial) para sonar
     if(!primeraCargaVentas){
       let nuevas=0;
@@ -1253,20 +1256,21 @@ function stopDash(){ if(dashUnsub){dashUnsub();dashUnsub=null;} if(ventasUnsub){
 
 /* Render de ventas: contador del día y acumulado por producto */
 function renderVentas(ventas){
-  const hoy={}, total={};
+  // 'ventas' ahora contiene SOLO las de hoy (optimización de lecturas)
+  const hoy={};
   let ventasHoy=0;
-  PRODUCTOS.forEach(p=>{hoy[p.ean]=0;total[p.ean]=0;});
+  PRODUCTOS.forEach(p=>{hoy[p.ean]=0;});
   ventas.forEach(v=>{
     const n=v.cantidad||1;
-    if(total[v.ean]!==undefined) total[v.ean]+=n; else total[v.ean]=n;
-    if(esHoy(v.ts||0)){ if(hoy[v.ean]!==undefined) hoy[v.ean]+=n; else hoy[v.ean]=n; ventasHoy+=n; }
+    if(hoy[v.ean]!==undefined) hoy[v.ean]+=n; else hoy[v.ean]=n;
+    ventasHoy+=n;
   });
   $('k-ventas').textContent=ventasHoy;
   $('dash-productos').innerHTML=PRODUCTOS.map(p=>(
     '<div class="prod-dash">'+
       '<img class="prod-img" src="'+p.foto+'" alt="">'+
       '<div class="prod-info"><div class="prod-name">'+p.nombre+'</div><div class="prod-ean">'+p.ean+'</div></div>'+
-      '<div class="pc-wrap"><div class="pc-day">'+(hoy[p.ean]||0)+'</div><div class="pc-tot">total: '+(total[p.ean]||0)+'</div></div>'+
+      '<div class="pc-wrap"><div class="pc-day">'+(hoy[p.ean]||0)+'</div><div class="pc-tot">hoy</div></div>'+
     '</div>'
   )).join('');
 }
