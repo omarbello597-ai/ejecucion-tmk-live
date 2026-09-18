@@ -532,6 +532,7 @@
       <input id="nt-nombre" type="text" placeholder="Ej: Éxito Calle 80">
       <label>Cadena *</label>
       <select id="nt-cadena"><option value="">— Selecciona —</option></select>
+      <input id="nt-cadena-nueva" type="text" placeholder="Escribe el nombre de la cadena nueva" style="display:none;margin-top:8px">
       <label>Ciudad *</label>
       <input id="nt-ciudad" type="text" placeholder="Ej: Bogotá">
       <label>Dirección</label>
@@ -701,11 +702,21 @@ async function cargarTiendas(){
   const sel=$('cadena-select');
   sel.innerHTML='<option value="">— Selecciona cadena —</option>'+
     cadenas.map(c=>'<option value="'+c.replace(/"/g,'&quot;')+'">'+c+'</option>').join('');
-  // llenar también el selector del formulario de tienda nueva
+  // llenar también el selector del formulario de tienda nueva (+ opción "otra")
   const selNT=$('nt-cadena');
   if(selNT) selNT.innerHTML='<option value="">— Selecciona —</option>'+
-    cadenas.map(c=>'<option value="'+c.replace(/"/g,'&quot;')+'">'+c+'</option>').join('');
+    cadenas.map(c=>'<option value="'+c.replace(/"/g,'&quot;')+'">'+c+'</option>').join('')+
+    '<option value="__NUEVA__">➕ Otra cadena (escribir)</option>';
 }
+
+// mostrar/ocultar campo de cadena nueva
+document.addEventListener('change',e=>{
+  if(e.target && e.target.id==='nt-cadena'){
+    const nueva=$('nt-cadena-nueva');
+    if(e.target.value==='__NUEVA__'){ nueva.style.display='block'; nueva.focus(); }
+    else { nueva.style.display='none'; nueva.value=''; }
+  }
+});
 
 // Al elegir cadena → habilitar buscador con las tiendas de esa cadena
 $('cadena-select').onchange=()=>{
@@ -754,12 +765,17 @@ $('tienda-no-aparece').onclick=()=>{
   // pre-cargar la cadena ya seleccionada, si la hay
   if($('cadena-select').value && $('nt-cadena')) $('nt-cadena').value=$('cadena-select').value;
   $('nt-nombre').value=''; $('nt-ciudad').value=''; $('nt-direccion').value=''; $('nt-codigo').value=''; $('nt-nota').value='';
+  if($('nt-cadena-nueva')){ $('nt-cadena-nueva').style.display='none'; $('nt-cadena-nueva').value=''; }
   show('scr-nueva-tienda');
 };
 $('nt-back').onclick=()=>show('scr-home');
 
 $('nt-enviar').onclick=async()=>{
-  const nombre=$('nt-nombre').value.trim(), cadena=$('nt-cadena').value, ciudad=$('nt-ciudad').value.trim();
+  const nombre=$('nt-nombre').value.trim();
+  let cadena=$('nt-cadena').value;
+  // si eligió "otra cadena", tomar el texto escrito
+  if(cadena==='__NUEVA__'){ cadena=$('nt-cadena-nueva').value.trim(); }
+  const ciudad=$('nt-ciudad').value.trim();
   if(!nombre||!cadena||!ciudad){ toast('Completa nombre, cadena y ciudad'); return; }
   $('nt-enviar').disabled=true; $('nt-enviar').textContent='Enviando...';
   if(DEMO){ toast('Solicitud enviada (demo)'); $('nt-enviar').disabled=false; $('nt-enviar').textContent='Enviar solicitud'; show('scr-home'); return; }
@@ -769,6 +785,7 @@ $('nt-enviar').onclick=async()=>{
       direccion:$('nt-direccion').value.trim(),
       codigo:$('nt-codigo').value.trim(),
       nota:$('nt-nota').value.trim(),
+      cadena_nueva: ($('nt-cadena').value==='__NUEVA__'),
       estado:'pendiente',
       solicitante_uid:PROFILE.uid, solicitante:PROFILE.nombre||PROFILE.email,
       ts:Date.now(), creado:serverTimestamp()
@@ -1645,7 +1662,7 @@ async function loadSolicitudes(){
     $('solic-list').innerHTML=pend.map(s=>(
       '<div class="user-row" data-id="'+s.id+'">'+
         '<div class="u-name">'+s.nombre+'</div>'+
-        '<div class="u-mail">'+(s.cadena||'')+' · '+(s.ciudad||'')+(s.direccion?' · '+s.direccion:'')+(s.codigo?' · cód '+s.codigo:'')+'</div>'+
+        '<div class="u-mail">'+(s.cadena||'')+(s.cadena_nueva?' <span style="color:var(--red);font-weight:700">(cadena NUEVA)</span>':'')+' · '+(s.ciudad||'')+(s.direccion?' · '+s.direccion:'')+(s.codigo?' · cód '+s.codigo:'')+'</div>'+
         (s.nota?'<div class="u-mail">📝 '+s.nota+'</div>':'')+
         '<div class="u-mail">Pidió: '+(s.solicitante||'—')+'</div>'+
         '<div class="u-actions">'+
