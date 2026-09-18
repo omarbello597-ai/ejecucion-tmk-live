@@ -394,9 +394,14 @@
       <button class="iconbtn" id="imple-back">‹</button>
     </div>
     <div class="card">
-      <label>1. Cadena</label>
+      <label>1. Categoría</label>
+      <div class="cat-btns">
+        <button type="button" class="cat-btn imp-cat-btn" data-impcat="HOGAR">🏠 HOGAR</button>
+        <button type="button" class="cat-btn imp-cat-btn" data-impcat="AUTOS">🚗 AUTOS</button>
+      </div>
+      <label style="margin-top:12px">2. Cadena</label>
       <select id="imp-cadena"><option value="">— Selecciona cadena —</option></select>
-      <label style="margin-top:12px">2. Tienda</label>
+      <label style="margin-top:12px">3. Tienda</label>
       <input id="imp-tienda-buscar" type="text" placeholder="Escribe para buscar tu tienda…" autocomplete="off" disabled>
       <div id="imp-tienda-results" class="tienda-results"></div>
       <div id="imp-tienda-elegida" class="tienda-elegida" style="display:none"></div>
@@ -1995,12 +2000,24 @@ function renderExplorador(){
 let impPdv=null, impTiendasCadena=[];
 let impFotos={planograma:[], antes:[], despues:[]};
 let impPendingType=null, impDocId=null;
+let impCat=null; // 'HOGAR' | 'AUTOS'
+
+// botones de categoría de implementación
+document.querySelectorAll('.imp-cat-btn').forEach(btn=>{
+  btn.onclick=()=>{
+    impCat=btn.dataset.impcat;
+    document.querySelectorAll('.imp-cat-btn').forEach(b=>b.classList.remove('sel'));
+    btn.classList.add('sel');
+    actualizarBotonImple();
+  };
+});
 
 $('open-imple-btn').onclick=()=>{ resetImple(); llenarCadenasImple(); show('scr-imple'); };
 $('imple-back').onclick=()=>show('scr-home');
 
 function resetImple(){
-  impPdv=null; impFotos={planograma:[],antes:[],despues:[]}; impDocId=null;
+  impPdv=null; impFotos={planograma:[],antes:[],despues:[]}; impDocId=null; impCat=null;
+  document.querySelectorAll('.imp-cat-btn').forEach(b=>b.classList.remove('sel'));
   $('imp-cadena').value=''; $('imp-tienda-buscar').value=''; $('imp-tienda-buscar').disabled=true;
   $('imp-tienda-results').innerHTML=''; $('imp-tienda-elegida').style.display='none';
   $('imp-thumbs').innerHTML=''; $('imp-notas').value='';
@@ -2042,8 +2059,8 @@ function elegirImpTienda(t){
   actualizarBotonImple();
 }
 function actualizarBotonImple(){
-  // habilita guardar si hay tienda + al menos foto antes y después
-  $('imp-guardar').disabled = !(impPdv && impFotos.antes.length>0 && impFotos.despues.length>0);
+  // habilita guardar si hay categoría + tienda + al menos foto antes y después
+  $('imp-guardar').disabled = !(impCat && impPdv && impFotos.antes.length>0 && impFotos.despues.length>0);
 }
 
 // fotos de implementación
@@ -2067,6 +2084,7 @@ $('imp-file-input').onchange=async e=>{
 };
 
 $('imp-guardar').onclick=async()=>{
+  if(!impCat){ toast('Selecciona la categoría (Hogar o Autos)'); return; }
   if(!impPdv || !impFotos.antes.length || !impFotos.despues.length){ toast('Faltan tienda, foto Antes o Después'); return; }
   $('imp-guardar').disabled=true; $('imp-guardar').textContent='Guardando...';
   if(DEMO){ toast('Implementación guardada (demo)'); resetImple(); show('scr-home'); $('imp-guardar').textContent='✓ Guardar implementación'; return; }
@@ -2085,7 +2103,7 @@ $('imp-guardar').onclick=async()=>{
     await addDoc(collection(db,'implementaciones'),{
       uid:PROFILE.uid, ejecutor:PROFILE.nombre||PROFILE.email, rol:PROFILE.rol||'',
       pdv:impPdv.nombre, codigo_tienda:impPdv.codigo||'', nombre_tienda:impPdv.nombre,
-      cadena:impPdv.cadena||'', ciudad:impPdv.ciudad||'',
+      cadena:impPdv.cadena||'', ciudad:impPdv.ciudad||'', categoria:impCat,
       fotos:urls, notas:$('imp-notas').value.trim(),
       recomendaciones:'', estado:'registrada',
       ts:Date.now(), creado:serverTimestamp()
