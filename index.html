@@ -370,6 +370,11 @@
       <p class="sub" id="resume-info">—</p>
       <button class="btn amber" id="resume-btn">Continuar ejecución</button>
     </div>
+    <div class="card" id="impleCard" style="display:none;border-color:var(--red)">
+      <h2>📐 Implementación Planograma</h2>
+      <p class="sub">Registra la implementación con foto Antes y Después.</p>
+      <button class="btn red" id="open-imple-btn">Nueva implementación</button>
+    </div>
     <div class="card" id="exploradorCard" style="display:none;border-color:var(--green)">
       <h2>🔎 Explorador de evidencias</h2>
       <p class="sub">Consulta las fotos por categoría, cliente y tienda.</p>
@@ -379,6 +384,38 @@
       <h2>📊 Tablero en vivo</h2>
       <p class="sub">Monitoreo nacional en tiempo real.</p>
       <button class="btn" id="open-dash-btn">Abrir tablero LIVE</button>
+    </div>
+  </section>
+
+  <!-- ===== IMPLEMENTACIÓN PLANOGRAMA ===== -->
+  <section id="scr-imple" class="screen">
+    <div class="top">
+      <div class="tophead"><div class="name">📐 Implementación</div></div>
+      <button class="iconbtn" id="imple-back">‹</button>
+    </div>
+    <div class="card">
+      <label>1. Cadena</label>
+      <select id="imp-cadena"><option value="">— Selecciona cadena —</option></select>
+      <label style="margin-top:12px">2. Tienda</label>
+      <input id="imp-tienda-buscar" type="text" placeholder="Escribe para buscar tu tienda…" autocomplete="off" disabled>
+      <div id="imp-tienda-results" class="tienda-results"></div>
+      <div id="imp-tienda-elegida" class="tienda-elegida" style="display:none"></div>
+    </div>
+    <div class="card">
+      <h2>📸 Fotos</h2>
+      <p class="sub" style="margin-bottom:8px">Toca cada tarjeta para tomar la foto.</p>
+      <div class="ev-grid">
+        <div class="evcard" data-imp="planograma"><div class="ico">📐</div><div class="lbl">Planograma guía</div><div class="cnt" id="impc-planograma">0 fotos</div></div>
+        <div class="evcard" data-imp="antes"><div class="ico">⬅️</div><div class="lbl">ANTES</div><div class="cnt" id="impc-antes">0 fotos</div></div>
+        <div class="evcard" data-imp="despues"><div class="ico">➡️</div><div class="lbl">DESPUÉS</div><div class="cnt" id="impc-despues">0 fotos</div></div>
+      </div>
+      <div class="thumbs" id="imp-thumbs"></div>
+      <input type="file" id="imp-file-input" accept="image/*" capture="environment" class="hidden">
+    </div>
+    <div class="card">
+      <label>Notas / observaciones</label>
+      <textarea id="imp-notas" rows="3" placeholder="Detalles de la implementación…"></textarea>
+      <button class="btn red" id="imp-guardar" disabled>✓ Guardar implementación</button>
     </div>
   </section>
 
@@ -865,11 +902,16 @@ function enterApp(){
   const email=(PROFILE.email||'').toLowerCase();
   const esMando = ['key_master','gerente'].includes(PROFILE.rol) || SUPER_ADMINS.includes(email);
   const esConsulta = PROFILE.rol==='consulta';
+  const esAnalista = PROFILE.rol==='analista_category';
+  // quién puede ejecutar visitas e implementaciones: todos menos consulta
+  const puedeEjecutar = !esConsulta;
   $('dashboardCard').style.display = esMando ? 'block' : 'none';
-  // El explorador lo ven: rol consulta, key_master y gerente
-  $('exploradorCard').style.display = (esConsulta || esMando) ? 'block' : 'none';
-  // El rol consulta NO puede ejecutar visitas: ocultamos la tarjeta de nueva ejecución
-  $('nuevaEjecCard').style.display = esConsulta ? 'none' : 'block';
+  // El explorador lo ven: consulta, analista, key_master y gerente
+  $('exploradorCard').style.display = (esConsulta || esAnalista || esMando) ? 'block' : 'none';
+  // La tarjeta de nueva ejecución: todos menos consulta
+  $('nuevaEjecCard').style.display = puedeEjecutar ? 'block' : 'none';
+  // La tarjeta de implementación: todos menos consulta
+  $('impleCard').style.display = puedeEjecutar ? 'block' : 'none';
   if(esConsulta){ $('home-banner').textContent='🔎 Consulta las evidencias de las visitas.'; }
   // Si Android recargó la app a media visita, recuperarla y volver a ella
   if(!esConsulta && !exec && restaurarExecLocal()){
@@ -1701,7 +1743,7 @@ async function loadSolicitudes(){
 }
 
 /* ============ GESTIÓN DE USUARIOS ============ */
-const ROLES=['mercaderista','consulta','coordinador','gerente','key_master'];
+const ROLES=['mercaderista','consulta','analista_category','coordinador','gerente','key_master'];
 async function loadUsers(){
   if(DEMO){ $('users-list').innerHTML='<p class="empty">Demo: aquí verás los usuarios registrados.</p>'; return; }
   $('users-list').innerHTML='<p class="sub">Cargando…</p>';
@@ -1948,6 +1990,111 @@ function renderExplorador(){
   });
   cont.innerHTML=html;
 }
+
+/* ============ IMPLEMENTACIÓN DE PLANOGRAMA ============ */
+let impPdv=null, impTiendasCadena=[];
+let impFotos={planograma:[], antes:[], despues:[]};
+let impPendingType=null, impDocId=null;
+
+$('open-imple-btn').onclick=()=>{ resetImple(); llenarCadenasImple(); show('scr-imple'); };
+$('imple-back').onclick=()=>show('scr-home');
+
+function resetImple(){
+  impPdv=null; impFotos={planograma:[],antes:[],despues:[]}; impDocId=null;
+  $('imp-cadena').value=''; $('imp-tienda-buscar').value=''; $('imp-tienda-buscar').disabled=true;
+  $('imp-tienda-results').innerHTML=''; $('imp-tienda-elegida').style.display='none';
+  $('imp-thumbs').innerHTML=''; $('imp-notas').value='';
+  ['planograma','antes','despues'].forEach(t=>$('impc-'+t).textContent='0 fotos');
+  document.querySelectorAll('#scr-imple .evcard').forEach(c=>{c.classList.remove('has');const b=c.querySelector('.badge');if(b)b.remove();});
+  $('imp-guardar').disabled=true;
+}
+function llenarCadenasImple(){
+  const cadenas=[...new Set(TIENDAS.map(t=>t.cadena).filter(Boolean))].sort();
+  $('imp-cadena').innerHTML='<option value="">— Selecciona cadena —</option>'+
+    cadenas.map(c=>'<option value="'+c.replace(/"/g,'&quot;')+'">'+c+'</option>').join('');
+}
+$('imp-cadena').onchange=()=>{
+  const cad=$('imp-cadena').value;
+  impPdv=null; $('imp-tienda-elegida').style.display='none'; $('imp-tienda-results').innerHTML='';
+  actualizarBotonImple();
+  const inp=$('imp-tienda-buscar');
+  if(!cad){ inp.disabled=true; inp.value=''; return; }
+  impTiendasCadena=TIENDAS.filter(t=>t.cadena===cad).sort((a,b)=>(a.nombre||'').localeCompare(b.nombre||''));
+  inp.disabled=false; inp.value=''; inp.focus();
+  renderImpTiendas('');
+};
+$('imp-tienda-buscar').oninput=()=>renderImpTiendas($('imp-tienda-buscar').value);
+function renderImpTiendas(q){
+  q=(q||'').toLowerCase().trim();
+  let lista=impTiendasCadena;
+  if(q) lista=lista.filter(t=>(t.nombre||'').toLowerCase().includes(q)||(t.ciudad||'').toLowerCase().includes(q));
+  lista=lista.slice(0,50);
+  $('imp-tienda-results').innerHTML=lista.map(t=>{
+    const idx=impTiendasCadena.indexOf(t);
+    return '<div class="tienda-opt" data-i="'+idx+'"><div class="to-name">'+limpiarNombreTienda(t.nombre)+'</div><div class="to-sub">'+(t.ciudad||'')+'</div></div>';
+  }).join('');
+  $('imp-tienda-results').querySelectorAll('.tienda-opt').forEach(el=>el.onclick=()=>elegirImpTienda(impTiendasCadena[+el.dataset.i]));
+}
+function elegirImpTienda(t){
+  impPdv=t; $('imp-tienda-results').innerHTML=''; $('imp-tienda-buscar').value=limpiarNombreTienda(t.nombre);
+  $('imp-tienda-elegida').style.display='block';
+  $('imp-tienda-elegida').innerHTML='<div class="te-name">✓ '+limpiarNombreTienda(t.nombre)+'</div><div class="te-sub">'+(t.ciudad||'')+' · '+(t.cadena||'')+'</div>';
+  actualizarBotonImple();
+}
+function actualizarBotonImple(){
+  // habilita guardar si hay tienda + al menos foto antes y después
+  $('imp-guardar').disabled = !(impPdv && impFotos.antes.length>0 && impFotos.despues.length>0);
+}
+
+// fotos de implementación
+document.querySelectorAll('#scr-imple .evcard').forEach(card=>{
+  card.onclick=()=>{ impPendingType=card.dataset.imp; $('imp-file-input').click(); };
+});
+$('imp-file-input').onchange=async e=>{
+  const files=[...e.target.files]; if(!files.length)return;
+  const card=document.querySelector('#scr-imple .evcard[data-imp="'+impPendingType+'"]');
+  for(const f of files){
+    const comp=await comprimirImagen(f,'hd'); // planogramas y antes/después en alta calidad
+    impFotos[impPendingType].push({file:comp,url:null});
+    const img=document.createElement('img'); img.src=URL.createObjectURL(comp); img.className='thumb-up'; $('imp-thumbs').appendChild(img);
+    const n=impFotos[impPendingType].length;
+    $('impc-'+impPendingType).textContent=n+' foto'+(n!==1?'s':'');
+    card.classList.add('has');
+    let b=card.querySelector('.badge'); if(!b){b=document.createElement('div');b.className='badge';card.appendChild(b);}
+    b.textContent=n;
+  }
+  e.target.value=''; actualizarBotonImple();
+};
+
+$('imp-guardar').onclick=async()=>{
+  if(!impPdv || !impFotos.antes.length || !impFotos.despues.length){ toast('Faltan tienda, foto Antes o Después'); return; }
+  $('imp-guardar').disabled=true; $('imp-guardar').textContent='Guardando...';
+  if(DEMO){ toast('Implementación guardada (demo)'); resetImple(); show('scr-home'); $('imp-guardar').textContent='✓ Guardar implementación'; return; }
+  try{
+    const pp=parsePDV(impPdv.nombre);
+    const carpeta=(impPdv.codigo?impPdv.codigo+'-':'')+slug(impPdv.nombre);
+    const id='imp_'+Date.now();
+    const urls={planograma:[],antes:[],despues:[]};
+    for(const tipo of Object.keys(impFotos)){
+      for(let i=0;i<impFotos[tipo].length;i++){
+        const path='implementaciones/'+carpeta+'/'+id+'/'+tipo+'_'+i+'_'+Date.now()+'.jpg';
+        const snap=await uploadBytes(ref(storage,path),impFotos[tipo][i].file);
+        urls[tipo].push(await getDownloadURL(snap.ref));
+      }
+    }
+    await addDoc(collection(db,'implementaciones'),{
+      uid:PROFILE.uid, ejecutor:PROFILE.nombre||PROFILE.email, rol:PROFILE.rol||'',
+      pdv:impPdv.nombre, codigo_tienda:impPdv.codigo||'', nombre_tienda:impPdv.nombre,
+      cadena:impPdv.cadena||'', ciudad:impPdv.ciudad||'',
+      fotos:urls, notas:$('imp-notas').value.trim(),
+      recomendaciones:'', estado:'registrada',
+      ts:Date.now(), creado:serverTimestamp()
+    });
+    toast('✓ Implementación guardada');
+    resetImple(); show('scr-home');
+  }catch(e){ console.error(e); toast('Error: '+(e.message||e)); }
+  $('imp-guardar').disabled=false; $('imp-guardar').textContent='✓ Guardar implementación';
+};
 
 /* init */
 loadPDVs();
