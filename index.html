@@ -276,6 +276,23 @@
   .mini-cat{padding:7px 11px;border:1.5px solid var(--line);background:#fff;border-radius:8px;font-family:var(--disp);font-weight:700;font-size:.78rem;color:var(--royal);cursor:pointer}
   .mini-cat.sel{background:var(--royal);color:#fff;border-color:var(--royal)}
   .mini-cat:active{transform:scale(.95)}
+
+  /* Comparación Antes/Después */
+  .cmp-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+  .cmp-col{text-align:center}
+  .cmp-col .cmp-lbl{font-family:var(--disp);font-weight:800;font-size:.8rem;padding:4px;border-radius:8px 8px 0 0;color:#fff}
+  .cmp-col.antes .cmp-lbl{background:var(--muted)}
+  .cmp-col.despues .cmp-lbl{background:var(--green)}
+  .cmp-col img{width:100%;height:150px;object-fit:cover;border:1px solid var(--line);border-top:none;border-radius:0 0 8px 8px}
+  .vi-row{display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid var(--line);cursor:pointer}
+  .vi-row:last-child{border:none}
+  .vi-row:active{background:#f3f6fc}
+  .vi-row .vr-name{font-weight:700;color:var(--royal);font-size:.92rem}
+  .vi-row .vr-sub{font-size:.76rem;color:var(--muted)}
+  .vi-row .vr-badge{font-size:.68rem;font-weight:700;padding:3px 8px;border-radius:20px;background:#E3F6EE;color:var(--green)}
+  .vi-row .vr-badge.pend{background:#FFF4CC;color:#9A7B12}
+  .reco-box{width:100%;margin-top:6px}
+  .plano-guia img{width:100%;max-height:240px;object-fit:contain;border:1px solid var(--line);border-radius:10px}
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -375,6 +392,11 @@
       <p class="sub">Registra la implementación con foto Antes y Después.</p>
       <button class="btn red" id="open-imple-btn">Nueva implementación</button>
     </div>
+    <div class="card" id="verImpleCard" style="display:none;border-color:var(--royal2)">
+      <h2>🗂️ Implementaciones ejecutadas</h2>
+      <p class="sub">Compara Antes/Después y deja recomendaciones.</p>
+      <button class="btn" id="open-ver-imple-btn" style="background:var(--royal2)">Ver implementaciones</button>
+    </div>
     <div class="card" id="exploradorCard" style="display:none;border-color:var(--green)">
       <h2>🔎 Explorador de evidencias</h2>
       <p class="sub">Consulta las fotos por categoría, cliente y tienda.</p>
@@ -422,6 +444,26 @@
       <textarea id="imp-notas" rows="3" placeholder="Detalles de la implementación…"></textarea>
       <button class="btn red" id="imp-guardar" disabled>✓ Guardar implementación</button>
     </div>
+  </section>
+
+  <!-- ===== VER IMPLEMENTACIONES ===== -->
+  <section id="scr-ver-imple" class="screen">
+    <div class="top">
+      <div class="tophead"><div class="name">🗂️ Implementaciones</div></div>
+      <button class="iconbtn" id="vi-back">‹</button>
+    </div>
+    <div class="card">
+      <div id="vi-list"><p class="sub">Cargando…</p></div>
+    </div>
+  </section>
+
+  <!-- ===== DETALLE IMPLEMENTACIÓN ===== -->
+  <section id="scr-imple-detalle" class="screen">
+    <div class="top">
+      <div class="tophead"><div class="name">📐 Detalle</div></div>
+      <button class="iconbtn" id="id-back">‹</button>
+    </div>
+    <div id="id-content"></div>
   </section>
 
   <!-- ===== EXPLORADOR DE EVIDENCIAS ===== -->
@@ -917,6 +959,8 @@ function enterApp(){
   $('nuevaEjecCard').style.display = puedeEjecutar ? 'block' : 'none';
   // La tarjeta de implementación: todos menos consulta
   $('impleCard').style.display = puedeEjecutar ? 'block' : 'none';
+  // Ver implementaciones + recomendaciones: key_master, gerente y analista
+  $('verImpleCard').style.display = (esMando || esAnalista) ? 'block' : 'none';
   if(esConsulta){ $('home-banner').textContent='🔎 Consulta las evidencias de las visitas.'; }
   // Si Android recargó la app a media visita, recuperarla y volver a ella
   if(!esConsulta && !exec && restaurarExecLocal()){
@@ -2113,6 +2157,94 @@ $('imp-guardar').onclick=async()=>{
   }catch(e){ console.error(e); toast('Error: '+(e.message||e)); }
   $('imp-guardar').disabled=false; $('imp-guardar').textContent='✓ Guardar implementación';
 };
+
+/* ============ VER IMPLEMENTACIONES + RECOMENDACIONES ============ */
+let IMPL_CACHE=[];
+$('open-ver-imple-btn').onclick=()=>{ show('scr-ver-imple'); loadImplementaciones(); };
+$('vi-back').onclick=()=>show('scr-home');
+$('id-back').onclick=()=>show('scr-ver-imple');
+
+async function loadImplementaciones(){
+  if(DEMO){ $('vi-list').innerHTML='<p class="empty">Demo: aquí verás las implementaciones.</p>'; return; }
+  $('vi-list').innerHTML='<p class="sub">Cargando…</p>';
+  try{
+    const q=query(collection(db,'implementaciones'), orderBy('ts','desc'));
+    const snap=await getDocs(q);
+    IMPL_CACHE=[]; snap.forEach(d=>IMPL_CACHE.push({id:d.id,...d.data()}));
+    if(!IMPL_CACHE.length){ $('vi-list').innerHTML='<p class="empty">Aún no hay implementaciones registradas.</p>'; return; }
+    $('vi-list').innerHTML=IMPL_CACHE.map(d=>{
+      const tieneReco=d.recomendaciones && d.recomendaciones.trim();
+      return '<div class="vi-row" data-id="'+d.id+'">'+
+        '<div><div class="vr-name">'+(d.categoria?(d.categoria==='AUTOS'?'🚗 ':'🏠 '):'')+limpiarNombreTienda(d.nombre_tienda||d.pdv)+'</div>'+
+        '<div class="vr-sub">'+(d.cadena||'')+' · '+(d.ejecutor||'—')+' · '+new Date(d.ts).toLocaleDateString()+'</div></div>'+
+        '<span class="vr-badge '+(tieneReco?'':'pend')+'">'+(tieneReco?'✓ con reco':'sin reco')+'</span></div>';
+    }).join('');
+    $('vi-list').querySelectorAll('.vi-row').forEach(r=>r.onclick=()=>verImplementacion(r.dataset.id));
+  }catch(e){ console.error(e); $('vi-list').innerHTML='<p class="empty">Error al cargar. Puede faltar un índice (mira la consola).</p>'; }
+}
+
+function verImplementacion(id){
+  const d=IMPL_CACHE.find(x=>x.id===id); if(!d)return;
+  const f=d.fotos||{};
+  const antes=(f.antes||[]), despues=(f.despues||[]), plano=(f.planograma||[]);
+  // ¿quién puede escribir recomendaciones? key_master, gerente, analista
+  const puedeReco = ['key_master','gerente','analista_category'].includes(PROFILE.rol) || SUPER_ADMINS.includes((PROFILE.email||'').toLowerCase());
+
+  let html='<div class="card"><h2>'+limpiarNombreTienda(d.nombre_tienda||d.pdv)+'</h2>'+
+    '<p class="sub">'+(d.categoria?((d.categoria==='AUTOS'?'🚗 ':'🏠 ')+d.categoria+' · '):'')+(d.cadena||'')+' · '+(d.ciudad||'')+'</p>'+
+    '<div class="stat"><span>Ejecutó</span><b>'+(d.ejecutor||'—')+'</b></div>'+
+    '<div class="stat"><span>Fecha</span><b>'+new Date(d.ts).toLocaleString()+'</b></div>'+
+    (d.notas?'<div class="stat" style="align-items:flex-start"><span>Notas</span><b style="text-align:right;max-width:60%">'+d.notas+'</b></div>':'')+
+  '</div>';
+
+  // Comparación Antes / Después
+  html+='<div class="card"><h2>🔄 Antes vs Después</h2><div class="cmp-grid">'+
+    '<div class="cmp-col antes"><div class="cmp-lbl">⬅️ ANTES</div>'+
+      (antes.length?'<a href="'+antes[0]+'" target="_blank"><img src="'+antes[0]+'"></a>':'<div style="height:150px;background:#f3f6fc;border-radius:0 0 8px 8px;display:flex;align-items:center;justify-content:center;color:var(--muted)">sin foto</div>')+'</div>'+
+    '<div class="cmp-col despues"><div class="cmp-lbl">➡️ DESPUÉS</div>'+
+      (despues.length?'<a href="'+despues[0]+'" target="_blank"><img src="'+despues[0]+'"></a>':'<div style="height:150px;background:#f3f6fc;border-radius:0 0 8px 8px;display:flex;align-items:center;justify-content:center;color:var(--muted)">sin foto</div>')+'</div>'+
+  '</div>';
+  // fotos adicionales antes/después si hay más de una
+  if(antes.length>1||despues.length>1){
+    html+='<div class="det-group-title">Más fotos</div><div class="exp-fotos">'+
+      antes.slice(1).map(u=>'<a href="'+u+'" target="_blank"><img src="'+u+'"></a>').join('')+
+      despues.slice(1).map(u=>'<a href="'+u+'" target="_blank"><img src="'+u+'"></a>').join('')+'</div>';
+  }
+  html+='</div>';
+
+  // Planograma guía
+  if(plano.length){
+    html+='<div class="card"><h2>📐 Planograma guía</h2><div class="plano-guia">'+
+      plano.map(u=>'<a href="'+u+'" target="_blank"><img src="'+u+'"></a>').join('')+'</div></div>';
+  }
+
+  // Recomendaciones
+  html+='<div class="card"><h2>💡 Recomendaciones</h2>';
+  if(puedeReco){
+    html+='<textarea id="reco-input" class="reco-box" rows="4" placeholder="Escribe recomendaciones de ajuste sobre esta implementación…">'+(d.recomendaciones||'')+'</textarea>'+
+      '<button class="btn" id="reco-guardar" data-id="'+d.id+'">Guardar recomendaciones</button>';
+  } else {
+    html+=(d.recomendaciones?'<p>'+d.recomendaciones+'</p>':'<p class="sub">Sin recomendaciones aún.</p>');
+  }
+  html+='</div>';
+
+  $('id-content').innerHTML=html;
+  if(puedeReco){
+    $('reco-guardar').onclick=async()=>{
+      const txt=$('reco-input').value.trim();
+      $('reco-guardar').disabled=true; $('reco-guardar').textContent='Guardando...';
+      try{
+        await updateDoc(doc(db,'implementaciones',d.id),{
+          recomendaciones:txt, reco_por:PROFILE.nombre||PROFILE.email, reco_ts:Date.now()
+        });
+        const ix=IMPL_CACHE.findIndex(x=>x.id===d.id); if(ix>=0) IMPL_CACHE[ix].recomendaciones=txt;
+        toast('✓ Recomendaciones guardadas');
+      }catch(e){ console.error(e); toast('Error: '+(e.message||e)); }
+      $('reco-guardar').disabled=false; $('reco-guardar').textContent='Guardar recomendaciones';
+    };
+  }
+  show('scr-imple-detalle');
+}
 
 /* init */
 loadPDVs();
